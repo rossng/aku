@@ -72,13 +72,20 @@ decodeC registers (Decode (Just instruction)) = Execute $ case instruction of
     ADD (Source source1) (Source source2) dest -> Just $ DecodedADD
         (fromIntegral $ readRegister registers source1)
         (fromIntegral $ readRegister registers source2)
-        (dest)
+        dest
+    ADDI (Source source1) (ImmS imm) dest -> Just $ DecodedADDI
+        (fromIntegral $ readRegister registers source1)
+        imm
+        dest
     _ -> Nothing
+decodeC registers (Decode Nothing) = Execute Nothing
 
 executeC :: Registers -> Execute -> Registers
 executeC registers (Execute (Just instruction)) = case instruction of
     DecodedADD op1 op2 (Dest dest) -> writeRegister registers dest (fromIntegral $ op1 + op2)
+    DecodedADDI op1 op2 (Dest dest) -> writeRegister registers dest (fromIntegral $ op1 + op2)
     _ -> registers
+executeC registers (Execute Nothing) = registers
 
 emptyMemory :: Memory
 emptyMemory = Memory $ V.replicate 256 0
