@@ -1,94 +1,121 @@
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Lib where
 
 import qualified Data.Vector as V
 import Data.Word
 import Data.Int
+import Control.Lens
 
 import Registers
+import Instruction
+import qualified Memory as M
 
-newtype DestRegister = Dest Register deriving (Show, Eq)
-newtype SourceRegister = Source Register deriving (Show, Eq)
-newtype SignedImmediate = ImmS Int32 deriving (Show, Eq)
-newtype UnsignedImmediate = ImmU Word32 deriving (Show, Eq)
+type Stall = Bool
 
-data Instruction =
-    -- Add the two source registers and store in the dest
-      ADD SourceRegister SourceRegister DestRegister
-    -- Add source register to immediate and store in dest
-    | ADDI SourceRegister SignedImmediate DestRegister
-    -- Subtract source2 from source1 and store in dest
-    | SUB SourceRegister SourceRegister DestRegister
-    -- Subtract immediate from source and store in dest
-    | SUBI SourceRegister SignedImmediate DestRegister
-    -- Load byte from address source + imm into dest
---    | LB SourceRegister SignedImmediate DestRegister
-    -- Store byte from source2 to address source1 + imm
---    | SB SourceRegister SignedImmediate SourceRegister
-    -- Jump to pc + imm
-    | J SignedImmediate
-    -- Jump to pc + imm if source1 == source2
-    | BEQ SourceRegister SourceRegister SignedImmediate
-    -- Jump to pc + imm if source1 < source2
-    | BLT SourceRegister SourceRegister SignedImmediate
-    deriving (Show, Eq)
+data BEGIF = BEGIF {
+    _begifPc :: Word32
+}
 
-data DecodedInstruction =
-      DecodedADD Int32 Int32 DestRegister
-    | DecodedADDI Int32 Int32 DestRegister
-    | DecodedSUB Int32 Int32 DestRegister
-    | DecodedSUBI Int32 Int32 DestRegister
---    | DecodedLB Int32 Int32 DestRegister
---    | DecodedSB Int32 Int32 Int32
-    | DecodedJ Int32
-    | DecodedBEQ Int32 Int32 Int32
-    | DecodedBLT Int32 Int32 Int32
-    deriving (Show, Eq)
+makeLenses ''BEGIF
 
-newtype Memory = Memory (V.Vector Word8) deriving (Show, Eq)
-newtype Program = Program (V.Vector Instruction) deriving (Show, Eq)
-newtype PC = PC Int deriving (Show, Eq)
+data IFID = IFID {
+      _ifidInstruction :: Maybe Instruction
+    , _ifidPc :: Word32
+}
 
-newtype Decode = Decode (Maybe Instruction) deriving (Show, Eq)
-newtype Execute = Execute (Maybe DecodedInstruction) deriving (Show, Eq)
+makeLenses ''IFID
 
-data CPU = CPU Registers PC Program Decode Execute deriving (Show, Eq)
+data IDEX = IDEX {
+      _idexOp :: Maybe Opcode
+    , _idexTarget :: Maybe RegisterName
+    , _idexSource1 :: Maybe RegisterName
+    , _idexSource2 :: Maybe RegisterName
+    , _idexPc :: Word32
+    , _idexOperand0 :: Word32
+    , _idexOperand1 :: Word32
+    , _idexOperand2 :: Word32
+}
 
-defaultCPU :: CPU
-defaultCPU = CPU emptyRegisters (PC 0) program (Decode Nothing) (Execute Nothing)
+makeLenses ''IDEX
 
-cycle :: CPU -> CPU
-cycle (CPU registers pc program decode execute) =
-    (CPU registers' pc' program decode' execute')
-    where (decode', pc') = fetchC pc program
-          execute' = decodeC registers decode
-          registers' = executeC registers execute
+data EXMEM = EXMEM {
+      _exmemOp :: Maybe Opcode
+    , _exmemTarget :: Maybe RegisterName
+    , _exmemPc :: Word32
+    , _exmemStoreData :: Word32
+    , _exmemAluOutput :: Word32
+}
 
-fetchC :: PC -> Program -> (Decode, PC)
-fetchC (PC pc) (Program program) = (Decode (program V.!? pc), PC (pc + 1))
+makeLenses ''EXMEM
 
-decodeC :: Registers -> Decode -> Execute
-decodeC registers (Decode (Just instruction)) = Execute $ case instruction of
-    ADD (Source source1) (Source source2) dest -> Just $ DecodedADD
-        (fromIntegral $ readRegister registers source1)
-        (fromIntegral $ readRegister registers source2)
-        dest
-    ADDI (Source source1) (ImmS imm) dest -> Just $ DecodedADDI
-        (fromIntegral $ readRegister registers source1)
-        imm
-        dest
-    _ -> Nothing
-decodeC registers (Decode Nothing) = Execute Nothing
+data MEMWB = MEMWB {
+      _memwbTarget :: Maybe RegisterName
+    , _memwbRfWriteData :: Word32
+}
 
-executeC :: Registers -> Execute -> Registers
-executeC registers (Execute (Just instruction)) = case instruction of
-    DecodedADD op1 op2 (Dest dest) -> writeRegister registers dest (fromIntegral $ op1 + op2)
-    DecodedADDI op1 op2 (Dest dest) -> writeRegister registers dest (fromIntegral $ op1 + op2)
-    _ -> registers
-executeC registers (Execute Nothing) = registers
+makeLenses ''MEMWB
 
-emptyMemory :: Memory
-emptyMemory = Memory $ V.replicate 256 0
+data WBEND = WBEND {
+      _wbendTarget :: Maybe RegisterName
+    , _wbendRfWriteData :: Word32
+}
 
-program :: Program
-program = Program [ADDI (Source X1) (ImmS 5) (Dest X1)]
+makeLenses ''WBEND
+
+data CPU = CPU {
+      _program :: M.Program
+    , _memory :: M.Memory
+    , _registers :: Registers
+    , _begif :: BEGIF
+    , _ifid :: IFID
+    , _idex :: IDEX
+    , _exmem :: EXMEM
+    , _memwb :: MEMWB
+    , _wbend :: WBEND
+}
+
+makeLenses ''CPU
+
+update :: CPU -> CPU
+update cpu = cpu'
+    where cpu' = cpu & ifid .~ (fetch cpu)
+
+fetch :: CPU -> IFID
+fetch cpu = (cpu^.ifid) & ifidPc .~ begifPc'
+                        & ifidInstruction .~ (program' V.!? (fromIntegral $ begifPc'))
+            where begifPc' = cpu^.begif.begifPc
+                  (M.Program program') = cpu^.program
+
+decode :: CPU -> IDEX
+decode cpu = (cpu^.idex) & idexOp .~ exOp'
+                         & idexTarget .~ exTarget'
+                         & idexSource1 .~ source1
+                         & idexSource2 .~ source2
+                         & idexOperand0 .~ case (getImmediate <$> cpu^.ifid.ifidInstruction) of
+                                                (Just imm)  -> imm
+                                                Nothing     -> 0
+                         & idexOperand1 .~ case readRegister (cpu^.registers) <$> source1 of
+                                                (Just val)  -> val
+                                                Nothing     -> 0
+                         & idexOperand2 .~ case readRegister (cpu^.registers) <$> source2 of
+                                                (Just val)  -> val
+                                                Nothing     -> 0
+    where (exOp', exTarget', exSource2', stall) = ctl7 (cpu^.ifid.ifidInstruction) (cpu^.idex.idexOp) (cpu^.idex.idexTarget)
+          source1 = (firstOf (element 0)) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
+          source2 = (firstOf (element 1)) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
+
+ctl7 :: Maybe Instruction -> Maybe Opcode -> Maybe RegisterName -> (Maybe Opcode, Maybe RegisterName, Maybe RegisterName, Stall)
+ctl7 idIns exOp exTarget = (exOp', exTarget', exSource2', stall)
+    where stall = (exOp == Just OPLW) && clash
+          clash = case do
+                    target <- exTarget
+                    ins <- idIns
+                    let reads = readsRegisters ins
+                    return (target `elem` reads)
+                  of
+                    (Just result) -> result
+                    Nothing -> False
+          exOp' = insToOp <$> idIns
+          exTarget' = (firstOf (element 0)) =<< (writesRegisters <$> idIns)
+          exSource2' = (firstOf (element 1)) =<< (readsRegisters <$> idIns)

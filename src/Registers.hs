@@ -2,7 +2,7 @@ module Registers where
 
 import Data.Word
 
-data Register = X0 | X1 | X2 | X3 | X4 | X5 | X6 | X7
+data RegisterName = X0 | X1 | X2 | X3 | X4 | X5 | X6 | X7
               deriving (Show, Eq)
 
 data Registers = Registers {
@@ -16,7 +16,7 @@ data Registers = Registers {
     , x7 :: Word32
 } deriving (Show, Eq)
 
-index :: Register -> Int
+index :: RegisterName -> Int
 index X0 = 0
 index X1 = 1
 index X2 = 2
@@ -26,7 +26,7 @@ index X5 = 5
 index X6 = 6
 index X7 = 7
 
-readRegister :: Registers -> Register -> Word32
+readRegister :: Registers -> RegisterName -> Word32
 readRegister (Registers x0 x1 x2 x3 x4 x5 x6 x7) register = case register of
     X0 -> 0
     X1 -> x1
@@ -40,7 +40,7 @@ readRegister (Registers x0 x1 x2 x3 x4 x5 x6 x7) register = case register of
 emptyRegisters :: Registers
 emptyRegisters = Registers 0 0 0 0 0 0 0 0
 
-writeRegister :: Registers -> Register -> Word32 -> Registers
+writeRegister :: Registers -> RegisterName -> Word32 -> Registers
 writeRegister registers register value = case register of
     X0 -> registers
     X1 -> registers { x1 = value }

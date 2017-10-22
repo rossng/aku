@@ -17,8 +17,11 @@ library
   hs-source-dirs:      src
   exposed-modules:     Lib
                      , Registers
+                     , Instruction
+                     , Memory
   build-depends:       base >= 4.7 && < 5
                      , vector
+                     , lens
   default-language:    Haskell2010
 
 executable aku-exe
