@@ -12,7 +12,7 @@ newtype SourceRegister = Source RegisterName deriving (Show, Eq)
 newtype SignedImmediate = ImmS Int32 deriving (Show, Eq)
 newtype UnsignedImmediate = ImmU Word32 deriving (Show, Eq)
 
-data Opcode = OPADD | OPADDI | OPNAND | OPLUI | OPSW | OPLW | OPBEQ | OPBLT
+data Opcode = OPADD | OPADDI | OPNAND | OPLUI | OPSW | OPLW | OPBEQ | OPJALR
               deriving (Eq, Show)
 
 data Instruction =
@@ -30,8 +30,8 @@ data Instruction =
     | LW DestRegister SourceRegister SignedImmediate
     -- Jump to pc + 1 + imm if source1 == source2
     | BEQ SourceRegister SourceRegister SignedImmediate
-    -- Jump to pc + 1 + source2 and store pc + 1 in source1
-    | BLT SourceRegister SourceRegister
+    -- Jump to source and store pc + 1 in dest
+    | JALR DestRegister SourceRegister
     deriving (Show, Eq)
 
 
@@ -43,7 +43,7 @@ getImmediate (LUI _ (ImmU imm)) = fromIntegral imm
 getImmediate (SW _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (LW _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (BEQ _ _ (ImmS imm)) = fromIntegral imm
-getImmediate (BLT _ _) = 0
+getImmediate (JALR _ _) = 0
 
 insToOp :: Instruction -> Opcode
 insToOp (ADD _ _ _) = OPADD
@@ -53,7 +53,7 @@ insToOp (LUI _ _) = OPLUI
 insToOp (SW _ _ _) = OPSW
 insToOp (LW _ _ _) = OPLW
 insToOp (BEQ _ _ _) = OPBEQ
-insToOp (BLT _ _) = OPBLT
+insToOp (JALR _ _) = OPJALR
 
 -- What registers does an instruction write (except PC)?
 writesRegisters :: Instruction -> [RegisterName]
@@ -64,7 +64,7 @@ writesRegisters (LUI (Dest r) _) = [r]
 writesRegisters (SW _ _ _) = []
 writesRegisters (LW (Dest r) _ _) = [r]
 writesRegisters (BEQ _ _ _) = []
-writesRegisters (BLT _ _) = []
+writesRegisters (JALR (Dest r) _) = [r]
 
 -- What registers does an instruction read (except PC)?
 readsRegisters :: Instruction -> [RegisterName]
@@ -75,4 +75,4 @@ readsRegisters (LUI _ _) = []
 readsRegisters (SW (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (LW _ (Source r1) _) = [r1]
 readsRegisters (BEQ (Source r1) (Source r2) _) = [r1, r2]
-readsRegisters (BLT (Source r1) (Source r2)) = [r1, r2]
+readsRegisters (JALR _ (Source r1)) = [r1]
