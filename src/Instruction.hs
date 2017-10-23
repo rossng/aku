@@ -34,6 +34,8 @@ data Instruction =
     | JALR DestRegister SourceRegister
     deriving (Show, Eq)
 
+nop :: Instruction
+nop = ADD (Dest X0) (Source X0) (Source X0)
 
 getImmediate :: Instruction -> Word32
 getImmediate (ADD _ _ _) = 0

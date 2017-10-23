@@ -82,12 +82,25 @@ makeLenses ''CPU
 
 update :: CPU -> CPU
 update cpu = cpu'
-    where cpu' = cpu    & begif .~ (begin cpu)
-                        & ifid  .~ (fetch cpu)
+    where cpu' = cpu    & begif .~ begif'
+                        & ifid  .~ ifid''
                         & idex  .~ (decode cpu)
                         & exmem .~ (execute cpu)
                         & memwb .~ (mem cpu)
                         & wbend .~ (writeback cpu)
+          begif' = if (stall cpu) then (cpu^.begif) else (begin cpu)
+          ifid' = if (stall cpu) then (cpu^.ifid) else (fetch cpu)
+          ifid'' = if (stomp cpu) then (ifid' & ifidInstruction .~ (Just nop)) else ifid'
+          idex' = if (stomp cpu) then (nopIdex (cpu^.idex)) else (cpu^.idex)
+
+nopIdex :: IDEX -> IDEX
+nopIdex i = i   & idexOp        .~ Just OPADD
+                & idexTarget    .~ Just X0
+                & idexSource1   .~ Just X0
+                & idexSource2   .~ Just X0
+                & idexOperand0  .~ 0
+                & idexOperand1  .~ 0
+                & idexOperand2  .~ 0
 
 begin :: CPU -> BEGIF
 begin cpu = (cpu^.begif) & begifPc .~ (muxPc cpu)
@@ -205,8 +218,6 @@ muxPc cpu
     | (cpu^.idex.idexOp) == (Just OPJALR)       = muxAlu1 cpu
     | otherwise                                 = (cpu^.begif.begifPc) + 1
     where (_, eq) = alu cpu
-
---muxOperand0 :: CPU ->
 
 stall :: CPU -> Bool
 stall cpu = ((cpu^.idex.idexOp) == Just OPLW) && clash
