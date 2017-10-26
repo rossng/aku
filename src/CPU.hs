@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Lib where
+module CPU where
 
 import qualified Data.Vector as V
 import Data.Word
@@ -14,18 +14,24 @@ import Instruction
 import qualified Memory as M
 
 type Stall = Bool
-data FuncAlu = AluADD | AluNAND | AluEQ | AluIMM
+data FuncAlu = AluADD | AluNAND | AluEQ | AluIMM deriving (Eq, Show)
 
 data BEGIF = BEGIF {
     _begifPc :: Word32
-}
+} deriving (Eq, Show)
+
+initialBEGIF :: BEGIF
+initialBEGIF = BEGIF 0
 
 makeLenses ''BEGIF
 
 data IFID = IFID {
       _ifidInstruction :: Maybe Instruction
     , _ifidPc :: Word32
-}
+} deriving (Eq, Show)
+
+initialIFID :: IFID
+initialIFID = IFID Nothing 0
 
 makeLenses ''IFID
 
@@ -38,7 +44,10 @@ data IDEX = IDEX {
     , _idexOperand0 :: Word32
     , _idexOperand1 :: Word32
     , _idexOperand2 :: Word32
-}
+} deriving (Eq, Show)
+
+initialIDEX :: IDEX
+initialIDEX = IDEX Nothing Nothing Nothing Nothing 0 0 0 0
 
 makeLenses ''IDEX
 
@@ -48,21 +57,30 @@ data EXMEM = EXMEM {
     , _exmemPc :: Word32
     , _exmemStoreData :: Word32
     , _exmemAluOutput :: Word32
-}
+} deriving (Eq, Show)
+
+initialEXMEM :: EXMEM
+initialEXMEM = EXMEM Nothing Nothing 0 0 0
 
 makeLenses ''EXMEM
 
 data MEMWB = MEMWB {
       _memwbTarget :: Maybe RegisterName
     , _memwbRfWriteData :: Word32
-}
+} deriving (Eq, Show)
+
+initialMEMWB :: MEMWB
+initialMEMWB = MEMWB Nothing 0
 
 makeLenses ''MEMWB
 
 data WBEND = WBEND {
       _wbendTarget :: Maybe RegisterName
     , _wbendRfWriteData :: Word32
-}
+} deriving (Eq, Show)
+
+initialWBEND :: WBEND
+initialWBEND = WBEND Nothing 0
 
 makeLenses ''WBEND
 
@@ -76,22 +94,31 @@ data CPU = CPU {
     , _exmem :: EXMEM
     , _memwb :: MEMWB
     , _wbend :: WBEND
-}
+} deriving (Eq, Show)
 
 makeLenses ''CPU
+
+initialCPU :: CPU
+initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters initialBEGIF initialIFID initialIDEX initialEXMEM initialMEMWB initialWBEND
 
 update :: CPU -> CPU
 update cpu = cpu'
     where cpu' = cpu    & begif .~ begif'
                         & ifid  .~ ifid''
-                        & idex  .~ (decode cpu)
-                        & exmem .~ (execute cpu)
-                        & memwb .~ (mem cpu)
-                        & wbend .~ (writeback cpu)
-          begif' = if (stall cpu) then (cpu^.begif) else (begin cpu)
-          ifid' = if (stall cpu) then (cpu^.ifid) else (fetch cpu)
-          ifid'' = if (stomp cpu) then (ifid' & ifidInstruction .~ (Just nop)) else ifid'
-          idex' = if (stomp cpu) then (nopIdex (cpu^.idex)) else (cpu^.idex)
+                        & idex  .~ idex'
+                        & exmem .~ execute cpu
+                        & memwb .~ mem cpu
+                        & wbend .~ writeback cpu
+                        & registers .~ writeRegisters cpu
+          begif' = if stall cpu then cpu^.begif else begin cpu
+          ifid' = if stall cpu then cpu^.ifid else fetch cpu
+          ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'
+          idex' = if stomp cpu then nopIdex (cpu^.idex) else decode cpu
+
+writeRegisters :: CPU -> Registers
+writeRegisters cpu = case cpu^.memwb.memwbTarget of
+                        Nothing     -> cpu^.registers
+                        (Just reg)  -> writeRegister (cpu^.registers) reg (cpu^.memwb.memwbRfWriteData)
 
 nopIdex :: IDEX -> IDEX
 nopIdex i = i   & idexOp        .~ Just OPADD
@@ -103,20 +130,20 @@ nopIdex i = i   & idexOp        .~ Just OPADD
                 & idexOperand2  .~ 0
 
 begin :: CPU -> BEGIF
-begin cpu = (cpu^.begif) & begifPc .~ (muxPc cpu)
+begin cpu = (cpu^.begif) & begifPc .~ muxPc cpu
 
 fetch :: CPU -> IFID
 fetch cpu = (cpu^.ifid) & ifidPc .~ begifPc'
-                        & ifidInstruction .~ (program' V.!? (fromIntegral $ begifPc'))
+                        & ifidInstruction .~ (program' V.!? fromIntegral begifPc')
             where begifPc' = cpu^.begif.begifPc
                   (M.Program program') = cpu^.program
 
 decode :: CPU -> IDEX
 decode cpu = (cpu^.idex)    & idexOp .~ (insToOp <$> (cpu^.ifid.ifidInstruction))
-                            & idexTarget .~ ((firstOf (element 0)) =<< writtenRegisters)
+                            & idexTarget .~ (firstOf (element 0) =<< writtenRegisters)
                             & idexSource1 .~ source1
                             & idexSource2 .~ source2
-                            & idexOperand0 .~ case (getImmediate <$> cpu^.ifid.ifidInstruction) of
+                            & idexOperand0 .~ case getImmediate <$> cpu^.ifid.ifidInstruction of
                                                 (Just imm)  -> imm
                                                 Nothing     -> 0
                             & idexOperand1 .~ case readRegister (cpu^.registers) <$> source1 of
@@ -126,39 +153,39 @@ decode cpu = (cpu^.idex)    & idexOp .~ (insToOp <$> (cpu^.ifid.ifidInstruction)
                                                 (Just val)  -> val
                                                 Nothing     -> 0
     where writtenRegisters = writesRegisters <$> (cpu^.ifid.ifidInstruction)
-          source1 = (firstOf (element 0)) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
-          source2 = (firstOf (element 1)) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
+          source1 = firstOf (element 0) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
+          source2 = firstOf (element 1) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
 
 execute :: CPU -> EXMEM
-execute cpu = (cpu^.exmem)  & exmemOp           .~ (cpu^.idex.idexOp)
-                            & exmemTarget       .~ (cpu^.idex.idexTarget)
-                            & exmemPc           .~ (cpu^.idex.idexPc)
-                            & exmemStoreData    .~ (muxAlu2Reg cpu)
+execute cpu = (cpu^.exmem)  & exmemOp           .~ cpu^.idex.idexOp
+                            & exmemTarget       .~ cpu^.idex.idexTarget
+                            & exmemPc           .~ cpu^.idex.idexPc
+                            & exmemStoreData    .~ muxAlu2Reg cpu
                             & exmemAluOutput    .~ aluOutput
     where (aluOutput, _) = alu cpu
 
 mem :: CPU -> MEMWB
-mem cpu = (cpu^.memwb)   & memwbTarget       .~ (cpu^.exmem.exmemTarget)
-                         & memwbRfWriteData  .~ (muxMemOut cpu)
+mem cpu = (cpu^.memwb)   & memwbTarget       .~ cpu^.exmem.exmemTarget
+                         & memwbRfWriteData  .~ muxMemOut cpu
 
 writeback :: CPU -> WBEND
 writeback cpu = (cpu^.wbend)    & wbendTarget       .~ (cpu^.memwb.memwbTarget)
                                 & wbendRfWriteData  .~ (cpu^.memwb.memwbRfWriteData)
 
 updateRegisters :: CPU -> Registers
-updateRegisters cpu = case (cpu^.memwb.memwbTarget) of
+updateRegisters cpu = case cpu^.memwb.memwbTarget of
                         (Just tgt)  -> writeRegister (cpu^.registers) tgt (cpu^.memwb.memwbRfWriteData)
                         Nothing     -> cpu^.registers
 
 updateMemory :: CPU -> M.Memory
-updateMemory cpu = case (cpu^.exmem.exmemOp) of
+updateMemory cpu = case cpu^.exmem.exmemOp of
                         (Just OPSW) -> M.setMemWord (cpu^.memory) (cpu^.exmem.exmemAluOutput) (cpu^.exmem.exmemStoreData)
-                        Nothing     -> (cpu^.memory)
+                        Nothing     -> cpu^.memory
 
 muxMemOut :: CPU -> Word32
 muxMemOut cpu
-    | (cpu^.exmem.exmemOp) == (Just OPLW)   = M.getMemWord (cpu^.memory) (cpu^.exmem.exmemAluOutput)
-    | otherwise                             = (cpu^.exmem.exmemAluOutput)
+    | (cpu^.exmem.exmemOp) == Just OPLW     = M.getMemWord (cpu^.memory) (cpu^.exmem.exmemAluOutput)
+    | otherwise                             = cpu^.exmem.exmemAluOutput
 
 -- Forward logic for the source1 register. If the target register of any previous instruction still in the pipeline
 -- matches the source1 register, forward it.
@@ -178,25 +205,26 @@ muxAlu2Reg cpu
 
 muxAlu2Imm :: CPU -> Word32
 muxAlu2Imm cpu
-    | cpu^.idex.idexOp == (Just OPADD)      = muxAlu2Reg cpu
-    | cpu^.idex.idexOp == (Just OPADDI)     = cpu^.idex.idexOperand0
-    | cpu^.idex.idexOp == (Just OPNAND)     = muxAlu2Reg cpu
-    | cpu^.idex.idexOp == (Just OPLUI)      = cpu^.idex.idexOperand0
-    | cpu^.idex.idexOp == (Just OPSW)       = cpu^.idex.idexOperand0
-    | cpu^.idex.idexOp == (Just OPLW)       = cpu^.idex.idexOperand0
-    | cpu^.idex.idexOp == (Just OPBEQ)      = muxAlu2Reg cpu
-    | cpu^.idex.idexOp == (Just OPJALR)     = (cpu^.idex.idexPc) + 1
+    | cpu^.idex.idexOp == Just OPADD        = muxAlu2Reg cpu
+    | cpu^.idex.idexOp == Just OPADDI       = cpu^.idex.idexOperand0
+    | cpu^.idex.idexOp == Just OPNAND       = muxAlu2Reg cpu
+    | cpu^.idex.idexOp == Just OPLUI        = cpu^.idex.idexOperand0
+    | cpu^.idex.idexOp == Just OPSW         = cpu^.idex.idexOperand0
+    | cpu^.idex.idexOp == Just OPLW         = cpu^.idex.idexOperand0
+    | cpu^.idex.idexOp == Just OPBEQ        = muxAlu2Reg cpu
+    | cpu^.idex.idexOp == Just OPJALR       = (cpu^.idex.idexPc) + 1
+    | otherwise                             = 0
 
 funcAlu :: CPU -> FuncAlu
 funcAlu cpu
-    | cpu^.idex.idexOp == (Just OPADD)      = AluADD
-    | cpu^.idex.idexOp == (Just OPADDI)     = AluADD
-    | cpu^.idex.idexOp == (Just OPNAND)     = AluNAND
-    | cpu^.idex.idexOp == (Just OPLUI)      = AluIMM
-    | cpu^.idex.idexOp == (Just OPSW)       = AluADD
-    | cpu^.idex.idexOp == (Just OPLW)       = AluADD
-    | cpu^.idex.idexOp == (Just OPBEQ)      = AluEQ
-    | cpu^.idex.idexOp == (Just OPJALR)     = AluIMM
+    | cpu^.idex.idexOp == Just OPADD        = AluADD
+    | cpu^.idex.idexOp == Just OPADDI       = AluADD
+    | cpu^.idex.idexOp == Just OPNAND       = AluNAND
+    | cpu^.idex.idexOp == Just OPLUI        = AluIMM
+    | cpu^.idex.idexOp == Just OPSW         = AluADD
+    | cpu^.idex.idexOp == Just OPLW         = AluADD
+    | cpu^.idex.idexOp == Just OPBEQ        = AluEQ
+    | cpu^.idex.idexOp == Just OPJALR       = AluIMM
     | otherwise                             = AluIMM -- ?
 
 alu :: CPU -> (Word32, Bool)
@@ -209,21 +237,21 @@ alu cpu = (output, (muxAlu1 cpu) == (muxAlu2Imm cpu))
                     AluIMM  -> muxAlu2Imm cpu
 
 stomp :: CPU -> Bool
-stomp cpu = (eq && (cpu^.idex.idexOp == (Just OPBEQ))) || (cpu^.idex.idexOp == (Just OPJALR))
+stomp cpu = (eq && (cpu^.idex.idexOp == Just OPBEQ)) || (cpu^.idex.idexOp == Just OPJALR)
     where (_, eq) = alu cpu
 
 muxPc :: CPU -> Word32
 muxPc cpu
-    | eq && (cpu^.idex.idexOp) == (Just OPBEQ)  = (cpu^.idex.idexPc) + 1 + (cpu^.idex.idexOperand0)
-    | (cpu^.idex.idexOp) == (Just OPJALR)       = muxAlu1 cpu
+    | eq && (cpu^.idex.idexOp) == Just OPBEQ    = (cpu^.idex.idexPc) + 1 + (cpu^.idex.idexOperand0)
+    | (cpu^.idex.idexOp) == Just OPJALR         = muxAlu1 cpu
     | otherwise                                 = (cpu^.begif.begifPc) + 1
     where (_, eq) = alu cpu
 
 stall :: CPU -> Bool
 stall cpu = ((cpu^.idex.idexOp) == Just OPLW) && clash
     where clash = case do
-                    target <- (cpu^.idex.idexTarget)
-                    ins <- (cpu^.ifid.ifidInstruction)
+                    target <- cpu^.idex.idexTarget
+                    ins <- cpu^.ifid.ifidInstruction
                     let reads = readsRegisters ins
                     return (target `elem` reads)
                   of

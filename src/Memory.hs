@@ -15,6 +15,9 @@ newtype Program = Program (V.Vector Instruction) deriving (Show, Eq)
 emptyMemory :: Memory
 emptyMemory = Memory $ V.replicate 256 0
 
+emptyProgram :: Program
+emptyProgram = Program []
+
 getMemWord :: Memory -> Word32 -> Word32
 getMemWord (Memory mem) addr = fromMaybe (0 :: Word32) $ mem V.!? (fromIntegral addr)
 

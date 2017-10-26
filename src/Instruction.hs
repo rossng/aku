@@ -38,9 +38,9 @@ nop :: Instruction
 nop = ADD (Dest X0) (Source X0) (Source X0)
 
 getImmediate :: Instruction -> Word32
-getImmediate (ADD _ _ _) = 0
+getImmediate ADD{} = 0
 getImmediate (ADDI _ _ (ImmS imm)) = fromIntegral imm
-getImmediate (NAND _ _ _) = 0
+getImmediate NAND{} = 0
 getImmediate (LUI _ (ImmU imm)) = fromIntegral imm
 getImmediate (SW _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (LW _ _ (ImmS imm)) = fromIntegral imm
@@ -48,14 +48,14 @@ getImmediate (BEQ _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (JALR _ _) = 0
 
 insToOp :: Instruction -> Opcode
-insToOp (ADD _ _ _) = OPADD
-insToOp (ADDI _ _ _) = OPADDI
-insToOp (NAND _ _ _) = OPNAND
-insToOp (LUI _ _) = OPLUI
-insToOp (SW _ _ _) = OPSW
-insToOp (LW _ _ _) = OPLW
-insToOp (BEQ _ _ _) = OPBEQ
-insToOp (JALR _ _) = OPJALR
+insToOp ADD{} = OPADD
+insToOp ADDI{} = OPADDI
+insToOp NAND{} = OPNAND
+insToOp LUI{} = OPLUI
+insToOp SW{} = OPSW
+insToOp LW{} = OPLW
+insToOp BEQ{} = OPBEQ
+insToOp JALR{} = OPJALR
 
 -- What registers does an instruction write (except PC)?
 writesRegisters :: Instruction -> [RegisterName]
