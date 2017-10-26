@@ -110,10 +110,16 @@ update cpu = cpu'
                         & memwb .~ mem cpu
                         & wbend .~ writeback cpu
                         & registers .~ writeRegisters cpu
+                        & memory .~ writeMemory cpu
           begif' = if stall cpu then cpu^.begif else begin cpu
           ifid' = if stall cpu then cpu^.ifid else fetch cpu
           ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'
           idex' = if stomp cpu then nopIdex (cpu^.idex) else decode cpu
+
+writeMemory :: CPU -> M.Memory
+writeMemory cpu = if (cpu^.exmem.exmemOp) == Just OPSW
+                    then M.setMemWord (cpu^.memory) (cpu^.exmem.exmemAluOutput) (cpu^.exmem.exmemStoreData)
+                    else cpu^.memory
 
 writeRegisters :: CPU -> Registers
 writeRegisters cpu = case cpu^.memwb.memwbTarget of
