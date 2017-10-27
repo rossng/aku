@@ -149,6 +149,7 @@ decode cpu = (cpu^.idex)    & idexOp .~ (insToOp <$> (cpu^.ifid.ifidInstruction)
                             & idexTarget .~ (firstOf (element 0) =<< writtenRegisters)
                             & idexSource1 .~ operand1Register
                             & idexSource2 .~ operand2Register
+                            & idexPc .~ (cpu^.ifid.ifidPc)
                             & idexOperand0 .~ case getImmediate <$> cpu^.ifid.ifidInstruction of
                                                 (Just imm)  -> imm
                                                 Nothing     -> 0

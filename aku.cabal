@@ -37,6 +37,9 @@ executable aku-exe
 test-suite aku-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
+  other-modules:       Forwarding
+                     , SingleInstruction
+                     , SimplePrograms
   main-is:             Spec.hs
   build-depends:       base
                      , aku
