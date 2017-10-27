@@ -147,20 +147,20 @@ fetch cpu = (cpu^.ifid) & ifidPc .~ begifPc'
 decode :: CPU -> IDEX
 decode cpu = (cpu^.idex)    & idexOp .~ (insToOp <$> (cpu^.ifid.ifidInstruction))
                             & idexTarget .~ (firstOf (element 0) =<< writtenRegisters)
-                            & idexSource1 .~ source1
-                            & idexSource2 .~ source2
+                            & idexSource1 .~ operand1Register
+                            & idexSource2 .~ operand2Register
                             & idexOperand0 .~ case getImmediate <$> cpu^.ifid.ifidInstruction of
                                                 (Just imm)  -> imm
                                                 Nothing     -> 0
-                            & idexOperand1 .~ case readRegister (cpu^.registers) <$> source1 of
+                            & idexOperand1 .~ case readRegister (cpu^.registers) <$> operand1Register of
                                                 (Just val)  -> val
                                                 Nothing     -> 0
-                            & idexOperand2 .~ case readRegister (cpu^.registers) <$> source2 of
+                            & idexOperand2 .~ case readRegister (cpu^.registers) <$> operand2Register of
                                                 (Just val)  -> val
                                                 Nothing     -> 0
     where writtenRegisters = writesRegisters <$> (cpu^.ifid.ifidInstruction)
-          source1 = firstOf (element 0) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
-          source2 = firstOf (element 1) =<< (readsRegisters <$> cpu^.ifid.ifidInstruction)
+          operand1Register = cpu^.ifid.ifidInstruction >>= operand1
+          operand2Register = cpu^.ifid.ifidInstruction >>= operand2
 
 execute :: CPU -> EXMEM
 execute cpu = (cpu^.exmem)  & exmemOp           .~ cpu^.idex.idexOp
@@ -177,16 +177,6 @@ mem cpu = (cpu^.memwb)   & memwbTarget       .~ cpu^.exmem.exmemTarget
 writeback :: CPU -> WBEND
 writeback cpu = (cpu^.wbend)    & wbendTarget       .~ (cpu^.memwb.memwbTarget)
                                 & wbendRfWriteData  .~ (cpu^.memwb.memwbRfWriteData)
-
-updateRegisters :: CPU -> Registers
-updateRegisters cpu = case cpu^.memwb.memwbTarget of
-                        (Just tgt)  -> writeRegister (cpu^.registers) tgt (cpu^.memwb.memwbRfWriteData)
-                        Nothing     -> cpu^.registers
-
-updateMemory :: CPU -> M.Memory
-updateMemory cpu = case cpu^.exmem.exmemOp of
-                        (Just OPSW) -> M.setMemWord (cpu^.memory) (cpu^.exmem.exmemAluOutput) (cpu^.exmem.exmemStoreData)
-                        Nothing     -> cpu^.memory
 
 muxMemOut :: CPU -> Word32
 muxMemOut cpu
@@ -234,7 +224,7 @@ funcAlu cpu
     | otherwise                             = AluIMM -- ?
 
 alu :: CPU -> (Word32, Bool)
-alu cpu = (output, (muxAlu1 cpu) == (muxAlu2Imm cpu))
+alu cpu = (output, muxAlu1 cpu == muxAlu2Imm cpu)
     where func = funcAlu cpu
           output = case func of
                     AluADD  -> muxAlu1 cpu + muxAlu2Imm cpu

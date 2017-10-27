@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE TemplateHaskell #-}
 module Memory where
 
 import qualified Data.Vector as V
@@ -19,10 +18,12 @@ emptyProgram :: Program
 emptyProgram = Program []
 
 getMemWord :: Memory -> Word32 -> Word32
-getMemWord (Memory mem) addr = fromMaybe (0 :: Word32) $ mem V.!? (fromIntegral addr)
+getMemWord (Memory mem) addr = fromMaybe (0 :: Word32) $ mem V.!? fromIntegral addr
 
 setMemWord :: Memory -> Word32 -> Word32 -> Memory
 setMemWord (Memory mem) addr val = Memory (mem V.// [(fromIntegral addr, val)])
 
 program :: Program
-program = Program [ADDI (Dest X1) (Source X1) (ImmS 5)]
+program = Program [
+              ADDI (Dest X1) (Source X1) (ImmS 5)
+            , ADDI (Dest X2) (Source X1) (ImmS 5)]

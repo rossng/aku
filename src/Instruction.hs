@@ -63,9 +63,9 @@ writesRegisters (ADD (Dest r) _ _) = [r]
 writesRegisters (ADDI (Dest r) _ _) = [r]
 writesRegisters (NAND (Dest r) _ _) = [r]
 writesRegisters (LUI (Dest r) _) = [r]
-writesRegisters (SW _ _ _) = []
+writesRegisters SW{} = []
 writesRegisters (LW (Dest r) _ _) = [r]
-writesRegisters (BEQ _ _ _) = []
+writesRegisters BEQ{} = []
 writesRegisters (JALR (Dest r) _) = [r]
 
 -- What registers does an instruction read (except PC)?
@@ -78,3 +78,24 @@ readsRegisters (SW (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (LW _ (Source r1) _) = [r1]
 readsRegisters (BEQ (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (JALR _ (Source r1)) = [r1]
+
+
+operand1 :: Instruction -> Maybe RegisterName
+operand1 (ADD _ (Source r) _) = Just r
+operand1 (ADDI _ (Source r) _) = Just r
+operand1 (NAND _ (Source r) _) = Just r
+operand1 LUI{} = Nothing
+operand1 (SW _ (Source r) _) = Just r
+operand1 (LW _ (Source r) _) = Just r
+operand1 (BEQ _ (Source r) _) = Just r
+operand1 (JALR _ (Source r)) = Just r
+
+operand2 :: Instruction -> Maybe RegisterName
+operand2 (ADD _ _ (Source r)) = Just r
+operand2 ADDI{} = Nothing
+operand2 (NAND _ _ (Source r)) = Just r
+operand2 LUI{} = Nothing
+operand2 (SW (Source r) _ _) = Just r
+operand2 LW{} = Nothing
+operand2 (BEQ (Source r) _ _) = Just r
+operand2 JALR{} = Nothing
