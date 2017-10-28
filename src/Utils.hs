@@ -4,12 +4,20 @@ import CPU
 import qualified Memory as M
 
 import Control.Lens
+import Control.Monad.Writer
 
 cpuWithProgram :: CPU -> M.Program -> CPU
 cpuWithProgram c p = c & program .~ p
 
-executeProgram :: CPU -> M.Program -> [CPU]
-executeProgram c p = iterate update $ cpuWithProgram c p
+initialState :: CPU -> Writer Stats CPU
+initialState cpu = writer (cpu, mempty)
 
-executeProgramToStep :: CPU -> M.Program -> Int -> CPU
-executeProgramToStep c p s = executeProgram c p !! s
+executeProgramToStep :: CPU -> M.Program -> Int -> (CPU, Stats)
+executeProgramToStep c p s = runWriter $ do init <- initialState (cpuWithProgram c p)
+                                            repeatFunction s update init
+
+--executeProgramToStep :: CPU -> M.Program -> Int -> CPU
+--executeProgramToStep c p s = executeProgram c p !! s
+
+repeatFunction :: Monad m => Int -> (a -> m a) -> (a -> m a)
+repeatFunction n f = foldr (<=<) return (replicate n f)

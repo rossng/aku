@@ -27,7 +27,7 @@ testSimpleProgram1 = TestCase $ assertEqual
                         BEQ (Source X2) (Source X3) (ImmS (-2)),
                         ADDI (Dest X1) (Source X1) (ImmS 5)]
               init = initialCPU
-              regs = executeProgramToStep init prog 100 ^. registers
+              regs = executeProgramToStep init prog 100 ^. _1 . registers
 
 testSimpleProgram2 = TestCase $ assertEqual
             "ADDI X1 X1 5, BEQ X2 X3 1, ADDI X1 X1 6, ADDI X1 X1 5"
@@ -39,7 +39,7 @@ testSimpleProgram2 = TestCase $ assertEqual
                         ADDI (Dest X1) (Source X1) (ImmS 6),
                         ADDI (Dest X1) (Source X1) (ImmS 5)]
               init = initialCPU
-              regs = executeProgramToStep init prog 100 ^. registers
+              regs = executeProgramToStep init prog 100 ^. _1 . registers
 
 testSimpleProgram3 = TestCase $ assertEqual
             "ADDI X1 X0 5, BEQ X1 X0 3, ADDI X2 X2 5, ADDI X1 X1 (-1), BEQ X0 X0 (-4)"
@@ -52,4 +52,4 @@ testSimpleProgram3 = TestCase $ assertEqual
                         ADDI (Dest X1) (Source X1) (ImmS (-1)),
                         BEQ (Source X0) (Source X0) (ImmS (-4))]
               init = initialCPU
-              regs = executeProgramToStep init prog 100 ^. registers
+              regs = executeProgramToStep init prog 100 ^. _1 . registers

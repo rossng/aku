@@ -8,6 +8,7 @@ import Data.Int
 import Control.Lens
 import Data.Bits
 import Data.Maybe
+import Control.Monad.Writer
 
 import Registers
 import Instruction
@@ -98,23 +99,34 @@ data CPU = CPU {
 
 makeLenses ''CPU
 
+data Stats = Stats {
+      _statsCycles :: Int
+} deriving (Eq, Show)
+
+makeLenses ''Stats
+
+instance Monoid Stats where
+    mempty = Stats 0
+    Stats a `mappend` Stats b = Stats (a + b)
+
 initialCPU :: CPU
 initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters initialBEGIF initialIFID initialIDEX initialEXMEM initialMEMWB initialWBEND
 
-update :: CPU -> CPU
-update cpu = cpu'
-    where cpu' = cpu    & begif .~ begif'
-                        & ifid  .~ ifid''
-                        & idex  .~ idex'
-                        & exmem .~ execute cpu
-                        & memwb .~ mem cpu
-                        & wbend .~ writeback cpu
-                        & registers .~ writeRegisters cpu
-                        & memory .~ writeMemory cpu
-          begif' = if stall cpu then cpu^.begif else begin cpu
-          ifid' = if stall cpu then cpu^.ifid else fetch cpu
-          ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'
-          idex' = if stomp cpu then nopIdex (cpu^.idex) else decode cpu
+update ::CPU -> Writer Stats CPU
+update cpu = writer (cpu', Stats 1)
+  where
+    cpu' = cpu  & begif .~ begif'
+                & ifid  .~ ifid''
+                & idex  .~ idex'
+                & exmem .~ execute cpu
+                & memwb .~ mem cpu
+                & wbend .~ writeback cpu
+                & registers .~ writeRegisters cpu
+                & memory .~ writeMemory cpu
+    begif' = if stall cpu then cpu^.begif else begin cpu
+    ifid' = if stall cpu then cpu^.ifid else fetch cpu
+    ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'
+    idex' = if stomp cpu then nopIdex (cpu^.idex) else decode cpu
 
 writeMemory :: CPU -> M.Memory
 writeMemory cpu = if (cpu^.exmem.exmemOp) == Just OPSW

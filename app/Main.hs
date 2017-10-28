@@ -6,7 +6,7 @@ import Utils
 import qualified Memory as M
 
 main :: IO ()
-main = print $ last $ executeProgram initialCPU M.program
+main = print $ executeProgramToStep initialCPU M.program 1
 
 --runProgram p = converge update (initialCPU & program .~ p)
 
