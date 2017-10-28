@@ -16,8 +16,5 @@ executeProgramToStep :: CPU -> M.Program -> Int -> (CPU, Stats)
 executeProgramToStep c p s = runWriter $ do init <- initialState (cpuWithProgram c p)
                                             repeatFunction s update init
 
---executeProgramToStep :: CPU -> M.Program -> Int -> CPU
---executeProgramToStep c p s = executeProgram c p !! s
-
 repeatFunction :: Monad m => Int -> (a -> m a) -> (a -> m a)
 repeatFunction n f = foldr (<=<) return (replicate n f)
