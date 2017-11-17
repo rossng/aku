@@ -12,7 +12,7 @@ newtype SourceRegister = Source RegisterName deriving (Show, Eq)
 newtype SignedImmediate = ImmS Int32 deriving (Show, Eq)
 newtype UnsignedImmediate = ImmU Word32 deriving (Show, Eq)
 
-data Opcode = OPADD | OPADDI | OPNAND | OPLUI | OPSW | OPLW | OPBEQ | OPJALR
+data Opcode = OPADD | OPADDI | OPNAND | OPLUI | OPSW | OPLW | OPBEQ | OPJALR | OPHALT
               deriving (Eq, Show)
 
 data Instruction =
@@ -32,6 +32,7 @@ data Instruction =
     | BEQ SourceRegister SourceRegister SignedImmediate
     -- Jump to source and store pc + 1 in dest
     | JALR DestRegister SourceRegister
+    | HALT
     deriving (Show, Eq)
 
 nop :: Instruction
@@ -46,6 +47,7 @@ getImmediate (SW _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (LW _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (BEQ _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (JALR _ _) = 0
+getImmediate HALT = 0
 
 insToOp :: Instruction -> Opcode
 insToOp ADD{} = OPADD
@@ -56,6 +58,7 @@ insToOp SW{} = OPSW
 insToOp LW{} = OPLW
 insToOp BEQ{} = OPBEQ
 insToOp JALR{} = OPJALR
+insToOp HALT = OPHALT
 
 -- What registers does an instruction write (except PC)?
 writesRegisters :: Instruction -> [RegisterName]
@@ -67,6 +70,7 @@ writesRegisters SW{} = []
 writesRegisters (LW (Dest r) _ _) = [r]
 writesRegisters BEQ{} = []
 writesRegisters (JALR (Dest r) _) = [r]
+writesRegisters HALT = []
 
 -- What registers does an instruction read (except PC)?
 readsRegisters :: Instruction -> [RegisterName]
@@ -78,6 +82,7 @@ readsRegisters (SW (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (LW _ (Source r1) _) = [r1]
 readsRegisters (BEQ (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (JALR _ (Source r1)) = [r1]
+readsRegisters HALT = []
 
 
 operand1 :: Instruction -> Maybe RegisterName
@@ -89,6 +94,7 @@ operand1 (SW _ (Source r) _) = Just r
 operand1 (LW _ (Source r) _) = Just r
 operand1 (BEQ _ (Source r) _) = Just r
 operand1 (JALR _ (Source r)) = Just r
+operand1 HALT = Nothing
 
 operand2 :: Instruction -> Maybe RegisterName
 operand2 (ADD _ _ (Source r)) = Just r
@@ -99,3 +105,4 @@ operand2 (SW (Source r) _ _) = Just r
 operand2 LW{} = Nothing
 operand2 (BEQ (Source r) _ _) = Just r
 operand2 JALR{} = Nothing
+operand2 HALT = Nothing

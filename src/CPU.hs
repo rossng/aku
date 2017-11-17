@@ -89,6 +89,7 @@ data CPU = CPU {
       _program :: M.Program
     , _memory :: M.Memory
     , _registers :: Registers
+    , _halted :: Bool
     , _begif :: BEGIF
     , _ifid :: IFID
     , _idex :: IDEX
@@ -110,19 +111,21 @@ instance Monoid Stats where
     Stats a `mappend` Stats b = Stats (a + b)
 
 initialCPU :: CPU
-initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters initialBEGIF initialIFID initialIDEX initialEXMEM initialMEMWB initialWBEND
+initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False initialBEGIF initialIFID initialIDEX initialEXMEM initialMEMWB initialWBEND
 
-update ::CPU -> Writer Stats CPU
+update :: CPU -> Writer Stats CPU
 update cpu = writer (cpu', Stats 1)
   where
-    cpu' = cpu  & begif .~ begif'
+    cpu' = cpu  & memory .~ writeMemory cpu
+                & registers .~ writeRegisters cpu
+                & halted .~ halted'
+                & begif .~ begif'
                 & ifid  .~ ifid''
                 & idex  .~ idex'
                 & exmem .~ execute cpu
                 & memwb .~ mem cpu
                 & wbend .~ writeback cpu
-                & registers .~ writeRegisters cpu
-                & memory .~ writeMemory cpu
+    halted' = cpu^.exmem.exmemOp == Just OPHALT
     begif' = if stall cpu then cpu^.begif else begin cpu
     ifid' = if stall cpu then cpu^.ifid else fetch cpu
     ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'

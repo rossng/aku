@@ -27,10 +27,11 @@ testForwarding1 = TestCase $ assertEqual
             (readRegister regs X1)
         where prog = M.Program [
                         ADD (Dest X1) (Source X2) (Source X3),
-                        ADDI (Dest X1) (Source X1) (ImmS 5)]
+                        ADDI (Dest X1) (Source X1) (ImmS 5),
+                        HALT]
               init = initialCPU & (registers.x2) .~ 7
                                 & (registers.x3) .~ 3
-              regs = executeProgramToStep init prog 6 ^. _1 . registers
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
 
 testForwarding2 = TestCase $ assertEqual
             "ADD X1 X2 X3, ADD X0 X0 X0, ADDI X1 X1 5"
@@ -39,10 +40,11 @@ testForwarding2 = TestCase $ assertEqual
         where prog = M.Program [
                         ADD (Dest X1) (Source X2) (Source X3),
                         ADD (Dest X0) (Source X0) (Source X0),
-                        ADDI (Dest X1) (Source X1) (ImmS 5)]
+                        ADDI (Dest X1) (Source X1) (ImmS 5),
+                        HALT]
               init = initialCPU & (registers.x2) .~ 7
                                 & (registers.x3) .~ 3
-              regs = executeProgramToStep init prog 10 ^. _1 . registers
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
 
 testForwarding3 = TestCase $ assertEqual
             "ADD X1 X2 X3, ADD X0 X0 X0, ADD X0 X0 X0, ADDI X1 X1 5"
@@ -52,10 +54,11 @@ testForwarding3 = TestCase $ assertEqual
                         ADD (Dest X1) (Source X2) (Source X3),
                         ADD (Dest X0) (Source X0) (Source X0),
                         ADD (Dest X0) (Source X0) (Source X0),
-                        ADDI (Dest X1) (Source X1) (ImmS 5)]
+                        ADDI (Dest X1) (Source X1) (ImmS 5),
+                        HALT]
               init = initialCPU & (registers.x2) .~ 7
                                 & (registers.x3) .~ 3
-              regs = executeProgramToStep init prog 10 ^. _1 . registers
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
 
 testForwarding4 = TestCase $ assertEqual
             "ADD X1 X2 X3, ADD X0 X0 X0, ADD X0 X0 X0, ADD X0 X0 X0, ADDI X1 X1 5"
@@ -66,10 +69,11 @@ testForwarding4 = TestCase $ assertEqual
                         ADD (Dest X0) (Source X0) (Source X0),
                         ADD (Dest X0) (Source X0) (Source X0),
                         ADD (Dest X0) (Source X0) (Source X0),
-                        ADDI (Dest X1) (Source X1) (ImmS 5)]
+                        ADDI (Dest X1) (Source X1) (ImmS 5),
+                        HALT]
               init = initialCPU & (registers.x2) .~ 7
                                 & (registers.x3) .~ 3
-              regs = executeProgramToStep init prog 10 ^. _1 . registers
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
 
 testForwarding5 = TestCase $ assertEqual
             "ADD X1 X2 X3, ADD X0 X0 X0, ADD X0 X0 X0, ADD X0 X0 X0, ADD X0 X0 X0, ADDI X1 X1 5"
@@ -81,10 +85,11 @@ testForwarding5 = TestCase $ assertEqual
                         ADD (Dest X0) (Source X0) (Source X0),
                         ADD (Dest X0) (Source X0) (Source X0),
                         ADD (Dest X0) (Source X0) (Source X0),
-                        ADDI (Dest X1) (Source X1) (ImmS 5)]
+                        ADDI (Dest X1) (Source X1) (ImmS 5),
+                        HALT]
               init = initialCPU & (registers.x2) .~ 7
                                 & (registers.x3) .~ 3
-              regs = executeProgramToStep init prog 10 ^. _1 . registers
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
 
 testForwarding6 = TestCase $ assertEqual
             "ADD X4 X2 X3, ADD X0 X0 X0, ADDI X4 X4 5, ADD X0 X0 X0, ADDI X4 X4 5"
@@ -95,7 +100,8 @@ testForwarding6 = TestCase $ assertEqual
                         ADD (Dest X0) (Source X0) (Source X0),
                         ADDI (Dest X4) (Source X4) (ImmS 5),
                         ADD (Dest X0) (Source X0) (Source X0),
-                        ADDI (Dest X4) (Source X4) (ImmS 5)]
+                        ADDI (Dest X4) (Source X4) (ImmS 5),
+                        HALT]
               init = initialCPU & (registers.x2) .~ 7
                                 & (registers.x3) .~ 3
-              regs = executeProgramToStep init prog 10 ^. _1 . registers
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
