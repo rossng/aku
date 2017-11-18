@@ -6,7 +6,6 @@ import Data.Int
 
 import Registers
 
-
 newtype DestRegister = Dest RegisterName deriving (Show, Eq)
 newtype SourceRegister = Source RegisterName deriving (Show, Eq)
 newtype SignedImmediate = ImmS Int32 deriving (Show, Eq)
