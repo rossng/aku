@@ -1,0 +1,6 @@
+ADDI X1 X1 5
+BEQ X2 X3 skipped
+ADDI X1 X1 6
+skipped:
+ADDI X1 X1 5
+HALT

@@ -14,6 +14,7 @@ newtype UnsignedImmediate = ImmU Word32 deriving (Show, Eq)
 data Opcode = OPADD | OPADDI | OPNAND | OPLUI | OPSW | OPLW | OPBEQ | OPJALR | OPHALT
               deriving (Eq, Show)
 
+
 data Instruction =
     -- Add the two source registers and store in the dest
       ADD DestRegister SourceRegister SourceRegister

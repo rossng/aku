@@ -1,0 +1,4 @@
+begin:
+ADD X0 X0 X0
+BEQ X2 X3 begin
+ADDI X1 X1 5

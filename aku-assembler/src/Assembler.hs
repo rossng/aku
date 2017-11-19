@@ -1,80 +1,64 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLists #-}
 module Assembler where
 
-import Control.Monad (void)
-import Data.Void
-import Data.Text
+import Parser
 import Data.Int
-import Data.Word
+import Data.List
+import qualified Data.Vector as V
+import qualified Data.Map.Strict as Map
+import Control.Monad.State
+import qualified Instruction as I
+import qualified Memory as M
 import Text.Megaparsec
-import Text.Megaparsec.Char
-import Text.Megaparsec.Expr
-import qualified Text.Megaparsec.Char.Lexer as L
-import Instruction
-import Registers
 
-type Parser = Parsec Void String
+data LabelState = PS Int [(String, Int)] deriving (Eq, Show)
 
-sc :: Parser ()
-sc = L.space (() <$ some (char ' ')) lineCmnt blockCmnt
-  where
-    lineCmnt  = L.skipLineComment "//"
-    blockCmnt = L.skipBlockComment "/*" "*/"
+stmtToInstruction :: Int -> [(String, Int)] -> Statement -> Either String [I.Instruction]
+stmtToInstruction addr labels stmt = case stmt of
+    ADD d s1 s2     -> Right [I.ADD d s1 s2]
+    ADDI d s i      -> Right [I.ADDI d s i]
+    NAND d s1 s2    -> Right [I.NAND d s1 s2]
+    LUI d u         -> Right [I.LUI d u]
+    SW s1 s2 i      -> Right [I.SW s1 s2 i]
+    LW d s i        -> Right [I.LW d s i]
+    BEQI s1 s2 i    -> Right [I.BEQ s1 s2 i]
+    BEQL s1 s2 l    -> case do label <- find (\e -> fst e == l) labels
+                               let labelAddr = snd label
+                               let relativeAddr = I.ImmS $ fromIntegral (labelAddr - addr - 2)
+                               return (I.BEQ s1 s2 relativeAddr) of
+                        Just i -> Right [i]
+                        Nothing -> Left $ "Label " ++ l ++ " not defined"
+    JALR d s        -> Right [I.JALR d s]
+    HALT            -> Right [I.HALT]
+    LABEL _         -> Right []
 
-lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
+replaceLabels :: [Statement] -> Either String [I.Instruction]
+replaceLabels [] = Right []
+replaceLabels stmts@(s:ss) = replaceLabels' labels stmts 0
+    where labels = process stmts
 
-symbol :: String -> Parser String
-symbol = L.symbol sc
+replaceLabels' :: [(String, Int)] -> [Statement] -> Int -> Either String [I.Instruction]
+replaceLabels' _ [] _ = Right []
+replaceLabels' labels (s:ss) addr = do
+                                instructions <- stmtToInstruction addr labels s
+                                restInstructions <- replaceLabels' labels ss (addr + length instructions)
+                                return (instructions ++ restInstructions)
 
-integer :: Parser Integer
-integer = lexeme L.decimal
+processStatement :: LabelState -> Statement -> LabelState
+processStatement (PS addr labels) (LABEL s) = PS addr ((s, addr + 1) : labels)
+processStatement (PS addr labels) _ = PS (addr + 1) labels
 
-unsignedInteger :: Parser Word32
-unsignedInteger = fromIntegral <$> integer
+process :: [Statement] -> [(String, Int)]
+process ss = labels
+    where PS _ labels = foldl processStatement (PS 0 []) ss
 
-signedInteger :: Parser Int32
-signedInteger = fromIntegral <$> L.signed sc integer
+parseFromFile :: Parsec e String a -> String -> IO (Either (ParseError (Token String) e) a)
+parseFromFile p file = runParser p file <$> readFile file
 
-rword :: String -> Parser ()
-rword w = lexeme (string w *> notFollowedBy alphaNumChar)
-
-rws :: [String]
-rws = ["ADD","ADDI","NAND","LUI","SW","LW","BEQ","JALR","HALT"]
-
-registerParser = try (X0 <$ rword "X0") <|>
-                try (X1 <$ rword "X1") <|>
-                try (X2 <$ rword "X2") <|>
-                try (X3 <$ rword "X3") <|>
-                try (X4 <$ rword "X4") <|>
-                try (X5 <$ rword "X5") <|>
-                try (X6 <$ rword "X6") <|>
-                try (X7 <$ rword "X7")
-
-destParser = Dest <$> registerParser
-sourceParser = Source <$> registerParser
-sImmParser = ImmS <$> signedInteger
-uImmParser = ImmU <$> unsignedInteger
-
-addParser = ADD <$ rword "ADD" <*> destParser <*> sourceParser <*> sourceParser
-addiParser = ADDI <$ rword "ADDI" <*> destParser <*> sourceParser <*> sImmParser
-nandParser = NAND <$ rword "NAND" <*> destParser <*> sourceParser <*> sourceParser
-luiParser = LUI <$ rword "LUI" <*> destParser <*> uImmParser
-swParser = SW <$ rword "SW" <*> sourceParser <*> sourceParser <*> sImmParser
-lwParser = LW <$ rword "LW" <*> destParser <*> sourceParser <*> sImmParser
-beqParser = BEQ <$ rword "BEQ" <*> sourceParser <*> sourceParser <*> sImmParser
-jalrParser = JALR <$ rword "JALR" <*> destParser <*> sourceParser
-haltParser = HALT <$ rword "HALT"
-
-statementParser =     try addParser
-                  <|> try addiParser
-                  <|> try nandParser
-                  <|> try luiParser
-                  <|> try swParser
-                  <|> try lwParser
-                  <|> try beqParser
-                  <|> try jalrParser
-                  <|> try haltParser
-
-programParser = sepEndBy1 statementParser eol <* eof
-
+loadProgram :: FilePath -> IO (Maybe M.Program)
+loadProgram f = do stmts <- parseFromFile programParser f
+                   case stmts of
+                    Left _      -> return Nothing
+                    Right ss    -> case replaceLabels ss of
+                        Left _      -> return Nothing
+                        Right is    -> return $ Just (M.Program (V.fromList is))
