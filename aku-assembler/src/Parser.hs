@@ -24,6 +24,8 @@ data Statement =
     | LW I.DestRegister I.SourceRegister I.SignedImmediate
     | BEQI I.SourceRegister I.SourceRegister I.SignedImmediate
     | BEQL I.SourceRegister I.SourceRegister String
+    | BLTI I.SourceRegister I.SourceRegister I.SignedImmediate
+    | BLTL I.SourceRegister I.SourceRegister String
     | JALR I.DestRegister I.SourceRegister
     | HALT
     | LABEL String
@@ -77,8 +79,10 @@ nandParser  = NAND <$ rword "NAND" <*> destParser <*> sourceParser <*> sourcePar
 luiParser   = LUI <$ rword "LUI" <*> destParser <*> uImmParser
 swParser    = SW <$ rword "SW" <*> sourceParser <*> sourceParser <*> sImmParser
 lwParser    = LW <$ rword "LW" <*> destParser <*> sourceParser <*> sImmParser
-beqiParser   = BEQI <$ rword "BEQ" <*> sourceParser <*> sourceParser <*> sImmParser
-beqlParser   = BEQL <$ rword "BEQ" <*> sourceParser <*> sourceParser <*> identifier
+beqiParser  = BEQI <$ rword "BEQ" <*> sourceParser <*> sourceParser <*> sImmParser
+beqlParser  = BEQL <$ rword "BEQ" <*> sourceParser <*> sourceParser <*> identifier
+bltiParser  = BLTI <$ rword "BLT" <*> sourceParser <*> sourceParser <*> sImmParser
+bltlParser  = BLTL <$ rword "BLT" <*> sourceParser <*> sourceParser <*> identifier
 jalrParser  = JALR <$ rword "JALR" <*> destParser <*> sourceParser
 haltParser  = HALT <$ rword "HALT"
 labelParser = LABEL <$> lexeme identifier <* symbol ":"
@@ -92,6 +96,8 @@ statementParser =     try addParser
                   <|> try lwParser
                   <|> try beqiParser
                   <|> try beqlParser
+                  <|> try bltiParser
+                  <|> try bltlParser
                   <|> try jalrParser
                   <|> try haltParser
                   <|> try labelParser

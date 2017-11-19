@@ -15,7 +15,7 @@ import Instruction
 import qualified Memory as M
 
 type Stall = Bool
-data FuncAlu = AluADD | AluNAND | AluEQ | AluIMM deriving (Eq, Show)
+data FuncAlu = AluADD | AluNAND | AluEQ | AluLT | AluIMM deriving (Eq, Show)
 
 data BEGIF = BEGIF {
     _begifPc :: Word32
@@ -66,22 +66,24 @@ initialEXMEM = EXMEM Nothing Nothing 0 0 0
 makeLenses ''EXMEM
 
 data MEMWB = MEMWB {
-      _memwbTarget :: Maybe RegisterName
+      _memwbOp :: Maybe Opcode
+    , _memwbTarget :: Maybe RegisterName
     , _memwbRfWriteData :: Word32
 } deriving (Eq, Show)
 
 initialMEMWB :: MEMWB
-initialMEMWB = MEMWB Nothing 0
+initialMEMWB = MEMWB Nothing Nothing 0
 
 makeLenses ''MEMWB
 
 data WBEND = WBEND {
-      _wbendTarget :: Maybe RegisterName
+      _wbendOp :: Maybe Opcode
+    , _wbendTarget :: Maybe RegisterName
     , _wbendRfWriteData :: Word32
 } deriving (Eq, Show)
 
 initialWBEND :: WBEND
-initialWBEND = WBEND Nothing 0
+initialWBEND = WBEND Nothing Nothing 0
 
 makeLenses ''WBEND
 
@@ -125,7 +127,7 @@ update cpu = writer (cpu', Stats 1)
                 & exmem .~ execute cpu
                 & memwb .~ mem cpu
                 & wbend .~ writeback cpu
-    halted' = cpu^.exmem.exmemOp == Just OPHALT
+    halted' = cpu^.wbend.wbendOp == Just OPHALT
     begif' = if stall cpu then cpu^.begif else begin cpu
     ifid' = if stall cpu then cpu^.ifid else fetch cpu
     ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'
@@ -141,6 +143,7 @@ writeRegisters cpu = case cpu^.memwb.memwbTarget of
                         Nothing     -> cpu^.registers
                         (Just reg)  -> writeRegister (cpu^.registers) reg (cpu^.memwb.memwbRfWriteData)
 
+-- | Insert a NOP into the IDEX registers
 nopIdex :: IDEX -> IDEX
 nopIdex i = i   & idexOp        .~ Just OPADD
                 & idexTarget    .~ Just X0
@@ -184,23 +187,25 @@ execute cpu = (cpu^.exmem)  & exmemOp           .~ cpu^.idex.idexOp
                             & exmemPc           .~ cpu^.idex.idexPc
                             & exmemStoreData    .~ muxAlu2Reg cpu
                             & exmemAluOutput    .~ aluOutput
-    where (aluOutput, _) = alu cpu
+    where (aluOutput, _, _) = alu cpu
 
 mem :: CPU -> MEMWB
-mem cpu = (cpu^.memwb)   & memwbTarget       .~ cpu^.exmem.exmemTarget
-                         & memwbRfWriteData  .~ muxMemOut cpu
+mem cpu = (cpu^.memwb)  & memwbOp           .~ cpu^.exmem.exmemOp
+                        & memwbTarget       .~ cpu^.exmem.exmemTarget
+                        & memwbRfWriteData  .~ muxMemOut cpu
 
 writeback :: CPU -> WBEND
-writeback cpu = (cpu^.wbend)    & wbendTarget       .~ (cpu^.memwb.memwbTarget)
-                                & wbendRfWriteData  .~ (cpu^.memwb.memwbRfWriteData)
+writeback cpu = (cpu^.wbend)    & wbendOp           .~ cpu^.memwb.memwbOp
+                                & wbendTarget       .~ cpu^.memwb.memwbTarget
+                                & wbendRfWriteData  .~ cpu^.memwb.memwbRfWriteData
 
+-- | Choose the MEMWB data - either the result of a memory lookup or the ALU result.
 muxMemOut :: CPU -> Word32
 muxMemOut cpu
     | (cpu^.exmem.exmemOp) == Just OPLW     = M.getMemWord (cpu^.memory) (cpu^.exmem.exmemAluOutput)
     | otherwise                             = cpu^.exmem.exmemAluOutput
 
--- Forward logic for the source1 register. If the target register of any previous instruction still in the pipeline
--- matches the source1 register, forward it.
+-- | Choose the register for the first ALU input: reg B or a forwarded value.
 muxAlu1 :: CPU -> Word32
 muxAlu1 cpu
     | (cpu^.idex.idexSource1) == (cpu^.exmem.exmemTarget)   = cpu^.exmem.exmemAluOutput
@@ -208,6 +213,7 @@ muxAlu1 cpu
     | (cpu^.idex.idexSource1) == (cpu^.wbend.wbendTarget)   = cpu^.wbend.wbendRfWriteData
     | otherwise                                             = cpu^.idex.idexOperand1
 
+-- | Choose the register for the second ALU input: reg A (/reg C) or a forwarded value.
 muxAlu2Reg :: CPU -> Word32
 muxAlu2Reg cpu
     | (cpu^.idex.idexSource2) == (cpu^.exmem.exmemTarget)   = cpu^.exmem.exmemAluOutput
@@ -215,6 +221,7 @@ muxAlu2Reg cpu
     | (cpu^.idex.idexSource2) == (cpu^.wbend.wbendTarget)   = cpu^.wbend.wbendRfWriteData
     | otherwise                                             = cpu^.idex.idexOperand2
 
+-- | Swap out the second ALU input for an immediate if the instruction requires it.
 muxAlu2Imm :: CPU -> Word32
 muxAlu2Imm cpu
     | cpu^.idex.idexOp == Just OPADD        = muxAlu2Reg cpu
@@ -224,9 +231,11 @@ muxAlu2Imm cpu
     | cpu^.idex.idexOp == Just OPSW         = cpu^.idex.idexOperand0
     | cpu^.idex.idexOp == Just OPLW         = cpu^.idex.idexOperand0
     | cpu^.idex.idexOp == Just OPBEQ        = muxAlu2Reg cpu
+    | cpu^.idex.idexOp == Just OPBLT        = muxAlu2Reg cpu
     | cpu^.idex.idexOp == Just OPJALR       = (cpu^.idex.idexPc) + 1
     | otherwise                             = 0
 
+-- | Select the function of the ALU based on the opcode entering execution.
 funcAlu :: CPU -> FuncAlu
 funcAlu cpu
     | cpu^.idex.idexOp == Just OPADD        = AluADD
@@ -236,29 +245,41 @@ funcAlu cpu
     | cpu^.idex.idexOp == Just OPSW         = AluADD
     | cpu^.idex.idexOp == Just OPLW         = AluADD
     | cpu^.idex.idexOp == Just OPBEQ        = AluEQ
+    | cpu^.idex.idexOp == Just OPBLT        = AluLT
     | cpu^.idex.idexOp == Just OPJALR       = AluIMM
     | otherwise                             = AluIMM -- ?
 
-alu :: CPU -> (Word32, Bool)
-alu cpu = (output, muxAlu1 cpu == muxAlu2Imm cpu)
+-- | Compute the output of the ALU, which is a triple of result (based on the
+--   selected operation), equality and less than.
+alu :: CPU -> (Word32, Bool, Bool)
+alu cpu = (output, muxAlu1 cpu == muxAlu2Imm cpu, muxAlu1 cpu > muxAlu2Imm cpu)
     where func = funcAlu cpu
           output = case func of
                     AluADD  -> muxAlu1 cpu + muxAlu2Imm cpu
                     AluNAND -> complement $ muxAlu1 cpu .&. muxAlu2Imm cpu
                     AluEQ   -> 0
+                    AluLT   -> 0
                     AluIMM  -> muxAlu2Imm cpu
 
+-- | Whether to clear instructions from the fetch and decode stages.
+--   This will happen if a branch is taken.
 stomp :: CPU -> Bool
-stomp cpu = (eq && (cpu^.idex.idexOp == Just OPBEQ)) || (cpu^.idex.idexOp == Just OPJALR)
-    where (_, eq) = alu cpu
+stomp cpu =    (eq && (cpu^.idex.idexOp == Just OPBEQ))
+            || (lt && (cpu^.idex.idexOp == Just OPBLT))
+            || (cpu^.idex.idexOp == Just OPJALR)
+    where (_, eq, lt) = alu cpu
 
+-- | Choose the next value of the PC in the fetch stage.
 muxPc :: CPU -> Word32
 muxPc cpu
     | eq && (cpu^.idex.idexOp) == Just OPBEQ    = (cpu^.idex.idexPc) + 1 + (cpu^.idex.idexOperand0)
+    | lt && (cpu^.idex.idexOp) == Just OPBLT    = (cpu^.idex.idexPc) + 1 + (cpu^.idex.idexOperand0)
     | (cpu^.idex.idexOp) == Just OPJALR         = muxAlu1 cpu
     | otherwise                                 = (cpu^.begif.begifPc) + 1
-    where (_, eq) = alu cpu
+    where (_, eq, lt) = alu cpu
 
+-- | Stall if this instruction reads the target register of a memory load directly ahead of it.
+--   We need one extra cycle (for now) to retrieve the memory into the MEMWB RFWRITEDATA register.
 stall :: CPU -> Bool
 stall cpu = ((cpu^.idex.idexOp) == Just OPLW) && clash
     where clash = case do

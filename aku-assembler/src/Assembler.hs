@@ -14,23 +14,30 @@ import Text.Megaparsec
 data LabelState = PS Int [(String, Int)] deriving (Eq, Show)
 
 stmtToInstruction :: Int -> [(String, Int)] -> Statement -> Either String [I.Instruction]
-stmtToInstruction addr labels stmt = case stmt of
-    ADD d s1 s2     -> Right [I.ADD d s1 s2]
-    ADDI d s i      -> Right [I.ADDI d s i]
-    NAND d s1 s2    -> Right [I.NAND d s1 s2]
-    LUI d u         -> Right [I.LUI d u]
-    SW s1 s2 i      -> Right [I.SW s1 s2 i]
-    LW d s i        -> Right [I.LW d s i]
-    BEQI s1 s2 i    -> Right [I.BEQ s1 s2 i]
-    BEQL s1 s2 l    -> case do label <- find (\e -> fst e == l) labels
-                               let labelAddr = snd label
-                               let relativeAddr = I.ImmS $ fromIntegral (labelAddr - addr - 2)
-                               return (I.BEQ s1 s2 relativeAddr) of
-                        Just i -> Right [i]
-                        Nothing -> Left $ "Label " ++ l ++ " not defined"
-    JALR d s        -> Right [I.JALR d s]
-    HALT            -> Right [I.HALT]
-    LABEL _         -> Right []
+stmtToInstruction addr labels stmt =
+    case stmt of
+        ADD d s1 s2     -> Right [I.ADD d s1 s2]
+        ADDI d s i      -> Right [I.ADDI d s i]
+        NAND d s1 s2    -> Right [I.NAND d s1 s2]
+        LUI d u         -> Right [I.LUI d u]
+        SW s1 s2 i      -> Right [I.SW s1 s2 i]
+        LW d s i        -> Right [I.LW d s i]
+        BEQI s1 s2 i    -> Right [I.BEQ s1 s2 i]
+        BEQL s1 s2 l    -> case do relativeAddr <- getRelativeAddr l
+                                   return (I.BEQ s1 s2 relativeAddr) of
+                            Just i -> Right [i]
+                            Nothing -> Left $ "Label " ++ l ++ " not defined"
+        BLTI s1 s2 i    -> Right [I.BLT s1 s2 i]
+        BLTL s1 s2 l    -> case do relativeAddr <- getRelativeAddr l
+                                   return (I.BLT s1 s2 relativeAddr) of
+                            Just i -> Right [i]
+                            Nothing -> Left $ "Label " ++ l ++ " not defined"
+        JALR d s        -> Right [I.JALR d s]
+        HALT            -> Right [I.HALT]
+        LABEL _         -> Right []
+  where getRelativeAddr l = do  label <- find (\e -> fst e == l) labels
+                                let labelAddr = snd label :: Int
+                                return (I.ImmS $ fromIntegral (labelAddr - addr - 2))
 
 replaceLabels :: [Statement] -> Either String [I.Instruction]
 replaceLabels [] = Right []

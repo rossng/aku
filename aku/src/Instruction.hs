@@ -11,7 +11,7 @@ newtype SourceRegister = Source RegisterName deriving (Show, Eq)
 newtype SignedImmediate = ImmS Int32 deriving (Show, Eq)
 newtype UnsignedImmediate = ImmU Word32 deriving (Show, Eq)
 
-data Opcode = OPADD | OPADDI | OPNAND | OPLUI | OPSW | OPLW | OPBEQ | OPJALR | OPHALT
+data Opcode = OPADD | OPADDI | OPNAND | OPLUI | OPSW | OPLW | OPBEQ | OPBLT | OPJALR | OPHALT
               deriving (Eq, Show)
 
 
@@ -30,6 +30,8 @@ data Instruction =
     | LW DestRegister SourceRegister SignedImmediate
     -- Jump to pc + 1 + imm if source1 == source2
     | BEQ SourceRegister SourceRegister SignedImmediate
+    -- Jump to pc + 1 + imm if source1 < source2
+    | BLT SourceRegister SourceRegister SignedImmediate
     -- Jump to source and store pc + 1 in dest
     | JALR DestRegister SourceRegister
     | HALT
@@ -46,6 +48,7 @@ getImmediate (LUI _ (ImmU imm)) = fromIntegral imm
 getImmediate (SW _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (LW _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (BEQ _ _ (ImmS imm)) = fromIntegral imm
+getImmediate (BLT _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (JALR _ _) = 0
 getImmediate HALT = 0
 
@@ -57,6 +60,7 @@ insToOp LUI{} = OPLUI
 insToOp SW{} = OPSW
 insToOp LW{} = OPLW
 insToOp BEQ{} = OPBEQ
+insToOp BLT{} = OPBLT
 insToOp JALR{} = OPJALR
 insToOp HALT = OPHALT
 
@@ -69,6 +73,7 @@ writesRegisters (LUI (Dest r) _) = [r]
 writesRegisters SW{} = []
 writesRegisters (LW (Dest r) _ _) = [r]
 writesRegisters BEQ{} = []
+writesRegisters BLT{} = []
 writesRegisters (JALR (Dest r) _) = [r]
 writesRegisters HALT = []
 
@@ -81,6 +86,7 @@ readsRegisters (LUI _ _) = []
 readsRegisters (SW (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (LW _ (Source r1) _) = [r1]
 readsRegisters (BEQ (Source r1) (Source r2) _) = [r1, r2]
+readsRegisters (BLT (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (JALR _ (Source r1)) = [r1]
 readsRegisters HALT = []
 
@@ -93,6 +99,7 @@ operand1 LUI{} = Nothing
 operand1 (SW _ (Source r) _) = Just r
 operand1 (LW _ (Source r) _) = Just r
 operand1 (BEQ _ (Source r) _) = Just r
+operand1 (BLT _ (Source r) _) = Just r
 operand1 (JALR _ (Source r)) = Just r
 operand1 HALT = Nothing
 
@@ -104,5 +111,6 @@ operand2 LUI{} = Nothing
 operand2 (SW (Source r) _ _) = Just r
 operand2 LW{} = Nothing
 operand2 (BEQ (Source r) _ _) = Just r
+operand2 (BLT (Source r) _ _) = Just r
 operand2 JALR{} = Nothing
 operand2 HALT = Nothing

@@ -18,7 +18,10 @@ testSingleInstruction = TestList [
     , testNAND
     , testSW
     , testLW
-    , testBEQ
+    , testBEQTaken
+    , testBEQSkipped
+    , testBLTTaken
+    , testBLTSkipped
     , testJALR
     ]
 
@@ -65,14 +68,44 @@ testLW = TestCase $ assertEqual
                                    & memory .~ M.setMemWord (initialCPU^.memory) 9 25
                  regs = executeProgramUntilHalt init prog ^. _1 . registers
 
-testBEQ = TestCase $ assertEqual
-            "BEQ X1 X2 2"
-            7
-            (result^.begif.begifPc)
-           where prog = M.Program [BEQ (Source X1) (Source X2) (ImmS 5)]
-                 init = initialCPU & (registers.x1) .~ 4
-                                   & (registers.x2) .~ 4
-                 (result, _) = executeProgramToStep init prog 4
+testBEQTaken = TestCase $ assertEqual
+            "BEQ X0 X1 1, ADDI X2 X0 5, HALT"
+            0
+            (readRegister regs X2)
+           where prog = M.Program [ BEQ (Source X0) (Source X1) (ImmS 1)
+                                  , ADDI (Dest X2) (Source X0) (ImmS 5)
+                                  , HALT]
+                 regs = executeProgramUntilHalt initialCPU prog ^. _1 . registers
+
+testBEQSkipped = TestCase $ assertEqual
+            "ADDI X1 X0 1, BEQ X0 X1 1, ADDI X2 X0 5, HALT"
+            5
+            (readRegister regs X2)
+           where prog = M.Program [ ADDI (Dest X1) (Source X0) (ImmS 1)
+                                  , BEQ (Source X0) (Source X1) (ImmS 1)
+                                  , ADDI (Dest X2) (Source X0) (ImmS 5)
+                                  , HALT]
+                 regs = executeProgramUntilHalt initialCPU prog ^. _1 . registers
+
+testBLTTaken = TestCase $ assertEqual
+            "ADDI X1 X0 1, BLT X0 X1 1, ADDI X2 X0 5, HALT"
+            0
+            (readRegister regs X2)
+            where prog = M.Program [ ADDI (Dest X1) (Source X0) (ImmS 1)
+                                   , BLT (Source X0) (Source X1) (ImmS 1)
+                                   , ADDI (Dest X2) (Source X0) (ImmS 5)
+                                   , HALT]
+                  regs = executeProgramUntilHalt initialCPU prog ^. _1 . registers
+
+testBLTSkipped = TestCase $ assertEqual
+            "ADDI X1 X0 1, BLT X1 X0 1, ADDI X2 X0 5, HALT"
+            5
+            (readRegister regs X2)
+            where prog = M.Program [ ADDI (Dest X1) (Source X0) (ImmS 1)
+                                   , BLT (Source X1) (Source X0) (ImmS 1)
+                                   , ADDI (Dest X2) (Source X0) (ImmS 5)
+                                   , HALT]
+                  regs = executeProgramUntilHalt initialCPU prog ^. _1 . registers
 
 testJALR = TestList [
             TestCase $ assertEqual
