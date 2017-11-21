@@ -3,6 +3,7 @@ module Registers where
 
 import Data.Word
 import Control.Lens
+import Text.Printf
 
 data RegisterName = X0 | X1 | X2 | X3 | X4 | X5 | X6 | X7
               deriving (Show, Eq)
@@ -16,9 +17,21 @@ data Registers = Registers {
     , _x5 :: Word32
     , _x6 :: Word32
     , _x7 :: Word32
-} deriving (Show, Eq)
+} deriving (Eq)
 
 makeLenses ''Registers
+
+instance Show Registers where
+    show regs = "REGISTERS  X0       X1       X2       X3       X4       X5       X6       X7      " ++ "\n"
+             ++ "           "
+             ++ printf "%08x " (regs^.x0)
+             ++ printf "%08x " (regs^.x1)
+             ++ printf "%08x " (regs^.x2)
+             ++ printf "%08x " (regs^.x3)
+             ++ printf "%08x " (regs^.x4)
+             ++ printf "%08x " (regs^.x5)
+             ++ printf "%08x " (regs^.x6)
+             ++ printf "%08x" (regs^.x7)
 
 readRegister :: Registers -> RegisterName -> Word32
 readRegister registers register = case register of

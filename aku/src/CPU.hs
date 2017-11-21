@@ -19,7 +19,10 @@ data FuncAlu = AluADD | AluNAND | AluEQ | AluLT | AluIMM deriving (Eq, Show)
 
 data BEGIF = BEGIF {
     _begifPc :: Word32
-} deriving (Eq, Show)
+} deriving (Eq)
+
+instance Show BEGIF where
+    show (BEGIF pc) = "BEGIF | PC: " ++ show pc
 
 initialBEGIF :: BEGIF
 initialBEGIF = BEGIF 0
@@ -29,7 +32,11 @@ makeLenses ''BEGIF
 data IFID = IFID {
       _ifidInstruction :: Maybe Instruction
     , _ifidPc :: Word32
-} deriving (Eq, Show)
+} deriving (Eq)
+
+instance Show IFID where
+    show (IFID insn pc) = "IFID  | PC: " ++ show pc ++ "\n" ++
+                          "      | Instruction: " ++ show insn
 
 initialIFID :: IFID
 initialIFID = IFID Nothing 0
@@ -45,12 +52,22 @@ data IDEX = IDEX {
     , _idexOperand0 :: Word32
     , _idexOperand1 :: Word32
     , _idexOperand2 :: Word32
-} deriving (Eq, Show)
+} deriving (Eq)
 
 initialIDEX :: IDEX
 initialIDEX = IDEX Nothing Nothing Nothing Nothing 0 0 0 0
 
 makeLenses ''IDEX
+
+instance Show IDEX where
+    show idex = "IDEX  | PC: " ++ show (idex^.idexPc) ++ "\n" ++
+                "      | Op: " ++ show (idex^.idexOp) ++ "\n" ++
+                "      | Target: " ++ show (idex^.idexTarget) ++ "\n" ++
+                "      | Source1: " ++ show (idex^.idexSource1) ++ "\n" ++
+                "      | Source2: " ++ show (idex^.idexSource2) ++ "\n" ++
+                "      | Operand0: " ++ show (idex^.idexOperand0) ++ "\n" ++
+                "      | Operand1: " ++ show (idex^.idexOperand1) ++ "\n" ++
+                "      | Operand2: " ++ show (idex^.idexOperand2)
 
 data EXMEM = EXMEM {
       _exmemOp :: Maybe Opcode
@@ -58,34 +75,51 @@ data EXMEM = EXMEM {
     , _exmemPc :: Word32
     , _exmemStoreData :: Word32
     , _exmemAluOutput :: Word32
-} deriving (Eq, Show)
+} deriving (Eq)
 
 initialEXMEM :: EXMEM
 initialEXMEM = EXMEM Nothing Nothing 0 0 0
 
 makeLenses ''EXMEM
 
+instance Show EXMEM where
+    show exmem = "EXMEM | PC: " ++ show (exmem^.exmemPc) ++ "\n" ++
+                 "      | Op: " ++ show (exmem^.exmemOp) ++ "\n" ++
+                 "      | Target: " ++ show (exmem^.exmemTarget) ++ "\n" ++
+                 "      | StoreData: " ++ show (exmem^.exmemStoreData) ++ "\n" ++
+                 "      | AluOutput: " ++ show (exmem^.exmemAluOutput)
+
 data MEMWB = MEMWB {
       _memwbOp :: Maybe Opcode
     , _memwbTarget :: Maybe RegisterName
     , _memwbRfWriteData :: Word32
-} deriving (Eq, Show)
+} deriving (Eq)
 
 initialMEMWB :: MEMWB
 initialMEMWB = MEMWB Nothing Nothing 0
 
 makeLenses ''MEMWB
 
+instance Show MEMWB where
+    show memwb = "MEMWB | Op: " ++ show (memwb^.memwbOp) ++ "\n" ++
+                 "      | Target: " ++ show (memwb^.memwbTarget) ++ "\n" ++
+                 "      | RfWriteData: " ++ show (memwb^.memwbRfWriteData)
+
 data WBEND = WBEND {
       _wbendOp :: Maybe Opcode
     , _wbendTarget :: Maybe RegisterName
     , _wbendRfWriteData :: Word32
-} deriving (Eq, Show)
+} deriving (Eq)
 
 initialWBEND :: WBEND
 initialWBEND = WBEND Nothing Nothing 0
 
 makeLenses ''WBEND
+
+instance Show WBEND where
+    show wbend = "WBEND | Op: " ++ show (wbend^.wbendOp) ++ "\n" ++
+                 "      | Target: " ++ show (wbend^.wbendTarget) ++ "\n" ++
+                 "      | RfWriteData: " ++ show (wbend^.wbendRfWriteData)
 
 data CPU = CPU {
       _program :: M.Program
@@ -98,9 +132,21 @@ data CPU = CPU {
     , _exmem :: EXMEM
     , _memwb :: MEMWB
     , _wbend :: WBEND
-} deriving (Eq, Show)
+} deriving (Eq)
 
 makeLenses ''CPU
+
+instance Show CPU where
+    show cpu = show (cpu^.program) ++ "\n" ++
+               show (cpu^.memory) ++ "\n" ++
+               show (cpu^.registers) ++ "\n" ++
+               (if cpu^.halted then "HALTED" else "ACTIVE") ++ "\n" ++
+               show (cpu^.begif) ++ "\n" ++
+               show (cpu^.ifid) ++ "\n" ++
+               show (cpu^.idex) ++ "\n" ++
+               show (cpu^.exmem) ++ "\n" ++
+               show (cpu^.memwb) ++ "\n" ++
+               show (cpu^.wbend)
 
 data Stats = Stats {
       _statsCycles :: Int

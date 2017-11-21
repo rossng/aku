@@ -2,15 +2,21 @@
 module Memory where
 
 import qualified Data.Vector as V
+import Data.Vector.Split
+import Data.List
 import Data.Word
 import Data.Int
 import Data.Maybe
+import Text.Printf
 
 import Instruction
 import Registers
 
-newtype Memory = Memory (V.Vector Word32) deriving (Show, Eq)
+newtype Memory = Memory (V.Vector Word32) deriving (Eq)
 newtype Program = Program (V.Vector Instruction) deriving (Show, Eq)
+
+instance Show Memory where
+    show (Memory mem) = intercalate "\n" . map (V.foldl (++) "") . chunksOf 16 . V.map (printf "%08x ") $ mem
 
 emptyMemory :: Memory
 emptyMemory = Memory $ V.replicate 256 0

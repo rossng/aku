@@ -25,6 +25,7 @@ library
                      , lens
                      , mtl
                      , monad-loops
+                     , vector-split
   default-language:    Haskell2010
 
 executable aku
