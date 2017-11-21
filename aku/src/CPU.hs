@@ -252,7 +252,7 @@ funcAlu cpu
 -- | Compute the output of the ALU, which is a triple of result (based on the
 --   selected operation), equality and less than.
 alu :: CPU -> (Word32, Bool, Bool)
-alu cpu = (output, muxAlu1 cpu == muxAlu2Imm cpu, muxAlu1 cpu > muxAlu2Imm cpu)
+alu cpu = (output, eq, lt)
     where func = funcAlu cpu
           output = case func of
                     AluADD  -> muxAlu1 cpu + muxAlu2Imm cpu
@@ -260,6 +260,10 @@ alu cpu = (output, muxAlu1 cpu == muxAlu2Imm cpu, muxAlu1 cpu > muxAlu2Imm cpu)
                     AluEQ   -> 0
                     AluLT   -> 0
                     AluIMM  -> muxAlu2Imm cpu
+          eq = muxAlu1 cpu == muxAlu2Imm cpu
+          lt = second > first
+            where second = fromIntegral (muxAlu1 cpu) :: Int32
+                  first = fromIntegral (muxAlu2Imm cpu) :: Int32
 
 -- | Whether to clear instructions from the fetch and decode stages.
 --   This will happen if a branch is taken.
@@ -267,6 +271,7 @@ stomp :: CPU -> Bool
 stomp cpu =    (eq && (cpu^.idex.idexOp == Just OPBEQ))
             || (lt && (cpu^.idex.idexOp == Just OPBLT))
             || (cpu^.idex.idexOp == Just OPJALR)
+            || (cpu^.idex.idexOp == Just OPHALT)
     where (_, eq, lt) = alu cpu
 
 -- | Choose the next value of the PC in the fetch stage.
@@ -281,7 +286,7 @@ muxPc cpu
 -- | Stall if this instruction reads the target register of a memory load directly ahead of it.
 --   We need one extra cycle (for now) to retrieve the memory into the MEMWB RFWRITEDATA register.
 stall :: CPU -> Bool
-stall cpu = ((cpu^.idex.idexOp) == Just OPLW) && clash
+stall cpu = (((cpu^.idex.idexOp) == Just OPLW) && clash) || halt
     where clash = case do
                     target <- cpu^.idex.idexTarget
                     ins <- cpu^.ifid.ifidInstruction
@@ -290,3 +295,7 @@ stall cpu = ((cpu^.idex.idexOp) == Just OPLW) && clash
                   of
                     (Just result) -> result
                     Nothing -> False
+          halt =    (cpu^.idex.idexOp) == Just OPHALT
+                 || (cpu^.exmem.exmemOp) == Just OPHALT
+                 || (cpu^.memwb.memwbOp) == Just OPHALT
+                 || (cpu^.wbend.wbendOp) == Just OPHALT
