@@ -7,6 +7,7 @@ import Data.Char
 import Control.Lens
 import Control.Monad
 import Control.Monad.Loops
+import Control.Monad.Writer.Lazy
 
 import CPU
 import Assembler
@@ -40,4 +41,5 @@ applyCommand command cpu = case command of
                 Just p -> return $ cpu & program .~ p
                 Nothing -> putStrLn "Failed to load program" >>
                            return cpu
+        Step    -> return $ fst $ runWriter (update cpu) -- TODO: keep logs
         Quit    -> return cpu

@@ -11,6 +11,7 @@ type Parser = Parsec Void String
 
 data Command =  Reset -- resets the CPU to initialCPU
               | LoadProgram String -- load a program into memory
+              | Step -- step forward one clock cycle
               | Quit  -- quit the debugger
               deriving (Eq, Show)
 
@@ -47,6 +48,10 @@ resetParser :: Parser Command
 resetParser =     Reset <$ try (rword "reset")
               <|> Reset <$ try (rword "r")
 
+stepParser :: Parser Command
+stepParser =     Step <$ try (rword "step")
+             <|> Step <$ try (rword "s")
+
 quitParser :: Parser Command
 quitParser =      Quit <$ try (rword "quit")
               <|> Quit <$ try (rword "q")
@@ -57,6 +62,7 @@ loadParser =      LoadProgram <$ try (rword "load") <*> filePathParser
 
 commandParser :: Parser Command
 commandParser = (    resetParser
+                <||> stepParser
                 <||> quitParser
                 <||> loadParser)
                 <* eof

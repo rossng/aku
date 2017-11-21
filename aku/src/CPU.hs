@@ -164,16 +164,17 @@ initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False initialBEGIF 
 update :: CPU -> Writer Stats CPU
 update cpu = writer (cpu', Stats 1)
   where
-    cpu' = cpu  & memory .~ writeMemory cpu
-                & registers .~ writeRegisters cpu
-                & halted .~ halted'
-                & begif .~ begif'
-                & ifid  .~ ifid''
-                & idex  .~ idex'
-                & exmem .~ execute cpu
-                & memwb .~ mem cpu
-                & wbend .~ writeback cpu
-    halted' = cpu^.wbend.wbendOp == Just OPHALT
+    cpu' = if cpu^.halted then cpu else cpu
+        & memory .~ writeMemory cpu
+        & registers .~ writeRegisters cpu
+        & halted .~ halted'
+        & begif .~ begif'
+        & ifid  .~ ifid''
+        & idex  .~ idex'
+        & exmem .~ execute cpu
+        & memwb .~ mem cpu
+        & wbend .~ writeback cpu
+    halted' = (cpu^.halted) || (cpu^.wbend.wbendOp == Just OPHALT)
     begif' = if stall cpu then cpu^.begif else begin cpu
     ifid' = if stall cpu then cpu^.ifid else fetch cpu
     ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'
