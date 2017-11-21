@@ -16,11 +16,13 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Debugger
+                     , Command
   build-depends:       base >= 4.7 && < 5
                      , vector
                      , lens
                      , mtl
                      , monad-loops
+                     , megaparsec
   default-language:    Haskell2010
 
 executable aku-debugger
@@ -30,10 +32,10 @@ executable aku-debugger
   build-depends:       base
                      , aku
                      , aku-assembler
+                     , aku-debugger
                      , lens
                      , mtl
                      , monad-loops
-                     , megaparsec
   default-language:    Haskell2010
 
 source-repository head

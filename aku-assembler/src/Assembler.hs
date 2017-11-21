@@ -9,7 +9,8 @@ import qualified Data.Map.Strict as Map
 import Control.Monad.State
 import qualified Instruction as I
 import qualified Memory as M
-import Text.Megaparsec
+import qualified Text.Megaparsec as MP
+import Control.Exception.Base
 
 data LabelState = PS Int [(String, Int)] deriving (Eq, Show)
 
@@ -59,13 +60,27 @@ process :: [Statement] -> [(String, Int)]
 process ss = labels
     where PS _ labels = foldl processStatement (PS 0 []) ss
 
-parseFromFile :: Parsec e String a -> String -> IO (Either (ParseError (Token String) e) a)
-parseFromFile p file = runParser p file <$> readFile file
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe = either (const Nothing) Just
+
+tryReadFile :: FilePath -> IO (Maybe String)
+tryReadFile fp = do
+    contents <- try $ readFile fp :: IO (Either IOException String)
+    case contents of
+        Left _ -> return Nothing
+        Right c -> return $ Just c
+
+parseFromFile :: Parser a -> String -> IO (Maybe a)
+parseFromFile p file = do
+    contents <- tryReadFile file
+    case contents of
+        Nothing -> return Nothing
+        Just c -> return $ eitherToMaybe $ MP.runParser p file c
 
 loadProgram :: FilePath -> IO (Maybe M.Program)
 loadProgram f = do stmts <- parseFromFile programParser f
                    case stmts of
-                    Left _      -> return Nothing
-                    Right ss    -> case replaceLabels ss of
+                    Nothing     -> return Nothing
+                    Just ss     -> case replaceLabels ss of
                         Left _      -> return Nothing
                         Right is    -> return $ Just (M.Program (V.fromList is))
