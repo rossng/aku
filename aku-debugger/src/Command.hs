@@ -12,6 +12,7 @@ type Parser = Parsec Void String
 data Command =  Reset -- resets the CPU to initialCPU
               | LoadProgram String -- load a program into memory
               | Step -- step forward one clock cycle
+              | StepN Int -- step forward n clock cycles
               | Quit  -- quit the debugger
               deriving (Eq, Show)
 
@@ -29,10 +30,10 @@ lexeme = L.lexeme sc
 symbol :: String -> Parser String
 symbol = L.symbol sc
 
-integer :: Parser Integer
+integer :: Parser Int
 integer = lexeme L.decimal
 
-signedInteger :: Parser Integer
+signedInteger :: Parser Int
 signedInteger = L.signed space integer
 
 rword :: String -> Parser ()
@@ -48,6 +49,10 @@ resetParser :: Parser Command
 resetParser =     Reset <$ try (rword "reset")
               <|> Reset <$ try (rword "r")
 
+stepNParser :: Parser Command
+stepNParser =    StepN <$ try (rword "step") <*> integer
+             <|> StepN <$ try (rword "s") <*> integer
+
 stepParser :: Parser Command
 stepParser =     Step <$ try (rword "step")
              <|> Step <$ try (rword "s")
@@ -62,6 +67,7 @@ loadParser =      LoadProgram <$ try (rword "load") <*> filePathParser
 
 commandParser :: Parser Command
 commandParser = (    resetParser
+                <||> stepNParser
                 <||> stepParser
                 <||> quitParser
                 <||> loadParser)

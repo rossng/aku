@@ -177,8 +177,8 @@ update cpu = writer (cpu', Stats 1)
     halted' = (cpu^.halted) || (cpu^.wbend.wbendOp == Just OPHALT)
     begif' = if stall cpu then cpu^.begif else begin cpu
     ifid' = if stall cpu then cpu^.ifid else fetch cpu
-    ifid'' = if stomp cpu then ifid' & ifidInstruction .~ Just nop else ifid'
-    idex' = if stomp cpu then nopIdex (cpu^.idex) else decode cpu
+    ifid'' = if stomp cpu then nopIfid else ifid'
+    idex' = if stomp cpu then nopIdex else decode cpu
 
 writeMemory :: CPU -> M.Memory
 writeMemory cpu = if (cpu^.exmem.exmemOp) == Just OPSW
@@ -191,14 +191,19 @@ writeRegisters cpu = case cpu^.memwb.memwbTarget of
                         (Just reg)  -> writeRegister (cpu^.registers) reg (cpu^.memwb.memwbRfWriteData)
 
 -- | Insert a NOP into the IDEX registers
-nopIdex :: IDEX -> IDEX
-nopIdex i = i   & idexOp        .~ Just OPADD
-                & idexTarget    .~ Just X0
-                & idexSource1   .~ Just X0
-                & idexSource2   .~ Just X0
-                & idexOperand0  .~ 0
-                & idexOperand1  .~ 0
-                & idexOperand2  .~ 0
+nopIdex :: IDEX
+nopIdex = IDEX { _idexOp = Just OPADD
+               , _idexTarget = Just X0
+               , _idexSource1 = Just X0
+               , _idexSource2 = Just X0
+               , _idexPc = 0
+               , _idexOperand0 = 0
+               , _idexOperand1 = 0
+               , _idexOperand2 = 0 }
+
+nopIfid :: IFID
+nopIfid = IFID { _ifidInstruction = Just nop
+               , _ifidPc = 0 }
 
 begin :: CPU -> BEGIF
 begin cpu = (cpu^.begif) & begifPc .~ muxPc cpu

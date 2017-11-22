@@ -12,6 +12,7 @@ import Control.Monad.Writer.Lazy
 import CPU
 import Assembler
 import Command
+import Utils
 
 main :: IO ()
 main = do
@@ -41,5 +42,9 @@ applyCommand command cpu = case command of
                 Just p -> return $ cpu & program .~ p
                 Nothing -> putStrLn "Failed to load program" >>
                            return cpu
-        Step    -> return $ fst $ runWriter (update cpu) -- TODO: keep logs
+        Step    -> return $ extractWriter (update cpu) -- TODO: keep logs
+        StepN n -> return $ extractWriter $ repeatFunction n update cpu
         Quit    -> return cpu
+
+extractWriter :: Writer w a -> a
+extractWriter = fst . runWriter
