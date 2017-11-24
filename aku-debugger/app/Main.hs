@@ -13,6 +13,7 @@ import CPU
 import Assembler
 import Command
 import qualified Memory as M
+import qualified Registers as R
 import Utils
 
 main :: IO ()
@@ -47,6 +48,8 @@ applyCommand command cpu = case command of
         StepN n -> return $ extractWriter $ repeatFunction n update cpu
         SetMemory a vs
                 -> return $ cpu & memory .~ (M.setMemWords (cpu^.memory) a vs)
+        SetRegister r v
+                -> return $ cpu & registers .~ (R.writeRegister (cpu^.registers) r v)
         Quit    -> return cpu
 
 extractWriter :: Writer w a -> a
