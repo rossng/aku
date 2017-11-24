@@ -2,6 +2,7 @@ module Command where
 
 import Data.Void
 import Data.Char
+import Data.Int
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Text.Megaparsec.Expr
@@ -13,6 +14,8 @@ data Command =  Reset -- resets the CPU to initialCPU
               | LoadProgram String -- load a program into memory
               | Step -- step forward one clock cycle
               | StepN Int -- step forward n clock cycles
+              | SetMemory Int [Int32] -- set a contiguous series of values in memory
+              | SetRegister RegisterName Word32 -- set a register to a value
               | Quit  -- quit the debugger
               deriving (Eq, Show)
 
@@ -42,8 +45,14 @@ rword w = lexeme (string w *> notFollowedBy alphaNumChar)
 quoted :: Parser a -> Parser a
 quoted = between (symbol "\"") (symbol "\"")
 
+list :: Parser a -> Parser a
+list = between (symbol "[") (symbol "]")
+
 filePathParser :: Parser String
 filePathParser = quoted (some (satisfy (\c -> not (isSpace c) && not (isControl c) && c /= '"')))
+
+valueListParser :: Parser [Int32]
+valueListParser = list $ fmap (map fromIntegral) (sepBy1 signedInteger (symbol ","))
 
 resetParser :: Parser Command
 resetParser =     Reset <$ try (rword "reset")
@@ -65,12 +74,16 @@ loadParser :: Parser Command
 loadParser =      LoadProgram <$ try (rword "load") <*> filePathParser
               <|> LoadProgram <$ try (rword "l") <*> filePathParser
 
+setMemParser :: Parser Command
+setMemParser = SetMemory <$ try (rword "setm") <*> integer <*> valueListParser
+
 commandParser :: Parser Command
 commandParser = (    resetParser
                 <||> stepNParser
                 <||> stepParser
                 <||> quitParser
-                <||> loadParser)
+                <||> loadParser
+                <||> setMemParser)
                 <* eof
 
 parseCommand :: String -> Maybe Command

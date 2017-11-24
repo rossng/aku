@@ -12,6 +12,7 @@ import Control.Monad.Writer.Lazy
 import CPU
 import Assembler
 import Command
+import qualified Memory as M
 import Utils
 
 main :: IO ()
@@ -44,6 +45,8 @@ applyCommand command cpu = case command of
                            return cpu
         Step    -> return $ extractWriter (update cpu) -- TODO: keep logs
         StepN n -> return $ extractWriter $ repeatFunction n update cpu
+        SetMemory a vs
+                -> return $ cpu & memory .~ (M.setMemWords (cpu^.memory) a vs)
         Quit    -> return cpu
 
 extractWriter :: Writer w a -> a
