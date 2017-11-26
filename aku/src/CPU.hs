@@ -178,7 +178,7 @@ update cpu = writer (cpu', Stats 1)
     begif' = if stall cpu then cpu^.begif else begin cpu
     ifid' = if stall cpu then cpu^.ifid else fetch cpu
     ifid'' = if stomp cpu then nopIfid else ifid'
-    idex' = if stomp cpu then nopIdex else decode cpu
+    idex' = if stomp cpu || stall cpu then nopIdex else decode cpu
 
 writeMemory :: CPU -> M.Memory
 writeMemory cpu = if (cpu^.exmem.exmemOp) == Just OPSW

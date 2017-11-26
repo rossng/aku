@@ -19,6 +19,9 @@ data Command =  Reset -- resets the CPU to initialCPU
               | StepN Int -- step forward n clock cycles
               | SetMemory Int [Int32] -- set a contiguous series of values in memory
               | SetRegister RegisterName Word32 -- set a register to a value
+              | Continue -- continue until halt
+              | ShowStall -- show the output of the stall logic
+              | ShowStomp -- show the output of the stall logic
               | Quit  -- quit the debugger
               deriving (Eq, Show)
 
@@ -55,7 +58,7 @@ filePathParser :: Parser String
 filePathParser = quoted (some (satisfy (\c -> not (isSpace c) && not (isControl c) && c /= '"')))
 
 valueListParser :: Parser [Int32]
-valueListParser = list $ (map fromIntegral) <$> (sepBy1 signedInteger (symbol ","))
+valueListParser = list $ map fromIntegral <$> sepBy1 signedInteger (symbol ",")
 
 registerNameParser :: Parser RegisterName
 registerNameParser =      X0 <$ try (rword "X0")
@@ -93,6 +96,16 @@ setMemParser = SetMemory <$ try (rword "setm") <*> integer <*> valueListParser
 setRegParser :: Parser Command
 setRegParser = SetRegister <$ try (rword "setr") <*> registerNameParser <*> (fromIntegral <$> signedInteger)
 
+continueParser :: Parser Command
+continueParser =     Continue <$ try (rword "continue")
+                 <|> Continue <$ try (rword "c")
+
+stallParser :: Parser Command
+stallParser = ShowStall <$ try (rword "stall")
+
+stompParser :: Parser Command
+stompParser = ShowStomp <$ try (rword "stomp")
+
 commandParser :: Parser Command
 commandParser = (    resetParser
                 <||> stepNParser
@@ -101,6 +114,9 @@ commandParser = (    resetParser
                 <||> loadParser
                 <||> setMemParser
                 <||> setRegParser
+                <||> continueParser
+                <||> stallParser
+                <||> stompParser
                 ) <* eof
 
 parseCommand :: String -> Maybe Command

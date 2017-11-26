@@ -21,12 +21,13 @@ testSimplePrograms = TestList [
         , loadAndTest "programs/skip_instruction.asm" testSkipInstruction
         , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
         , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [2,12,1,4,9,6,14,7,10,5,11,13,15,0,8,3])
-        --, loadAndTest "programs/bubble_sort.asm" (testBubbleSort [3,2])
-        --, loadAndTest "programs/bubble_sort.asm" (testBubbleSort [70,60,50,40,30,20,10,0,-10,-20,-30,-40,-50,-60,-70,-80])
+        , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [3,2])
+        , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [70,60,50,40,30,20,10,0,-10,-20,-30,-40,-50,-60,-70,-80])
         , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [-1])
         , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [1])
         , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [1,2])
         , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [5,4,3,2,1,-1,-2,-3,-4])
+        , loadAndTest "programs/bubble_sort.asm" (testBubbleSort [-1,-1,-1])
         , loadAndTest "programs/store_then_load.asm" testStoreThenLoad
     ]
 

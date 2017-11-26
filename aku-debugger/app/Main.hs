@@ -32,25 +32,26 @@ repl (cpu, command) = do
         cpu' <- case command' of
                Just cmd    -> applyCommand cmd cpu
                Nothing     -> return cpu
-        print cpu'
+        when (cpu /= cpu') $ print cpu'
         return (cpu', command')
 
 applyCommand :: Command -> CPU -> IO CPU
 applyCommand command cpu = case command of
-        Reset   -> return initialCPU
-        LoadProgram path -> do
-           maybeProgram <- loadProgram path
-           case maybeProgram of
-                Just p -> return $ cpu & program .~ p
-                Nothing -> putStrLn "Failed to load program" >>
-                           return cpu
-        Step    -> return $ extractWriter (update cpu) -- TODO: keep logs
-        StepN n -> return $ extractWriter $ repeatFunction n update cpu
-        SetMemory a vs
-                -> return $ cpu & memory .~ (M.setMemWords (cpu^.memory) a vs)
-        SetRegister r v
-                -> return $ cpu & registers .~ (R.writeRegister (cpu^.registers) r v)
-        Quit    -> return cpu
+        Reset           -> return initialCPU
+        LoadProgram path
+                        -> do
+                           maybeProgram <- loadProgram path
+                           case maybeProgram of
+                                Just p -> return $ cpu & program .~ p
+                                Nothing -> putStrLn "Failed to load program" >> return cpu
+        Step            -> return $ extractWriter (update cpu) -- TODO: keep logs
+        StepN n         -> return $ extractWriter $ repeatFunction n update cpu
+        SetMemory a vs  -> return $ cpu & memory .~ M.setMemWords (cpu^.memory) a vs
+        SetRegister r v -> return $ cpu & registers .~ R.writeRegister (cpu^.registers) r v
+        Continue        -> return $ fst $ executeUntilHalt cpu
+        ShowStall       -> print (stall cpu) >> return cpu
+        ShowStomp       -> print (stomp cpu) >> return cpu
+        Quit            -> return cpu
 
 extractWriter :: Writer w a -> a
 extractWriter = fst . runWriter
