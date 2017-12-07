@@ -24,6 +24,9 @@ emptyMemory = Memory $ V.replicate 256 0
 emptyProgram :: Program
 emptyProgram = Program []
 
+getInstruction :: Program -> Int -> Instruction
+getInstruction (Program p) i = p V.! i
+
 getMemWord :: Memory -> Word32 -> Word32
 getMemWord (Memory mem) addr = fromMaybe (0 :: Word32) $ mem V.!? fromIntegral addr
 

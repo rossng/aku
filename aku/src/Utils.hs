@@ -2,6 +2,7 @@ module Utils where
 
 import CPU
 import qualified Memory as M
+import Stats
 
 import Control.Lens
 import Control.Monad.Writer

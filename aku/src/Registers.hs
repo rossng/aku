@@ -6,7 +6,7 @@ import Control.Lens
 import Text.Printf
 
 data RegisterName = X0 | X1 | X2 | X3 | X4 | X5 | X6 | X7
-              deriving (Show, Eq)
+              deriving (Show, Eq, Ord)
 
 data Registers = Registers {
       _x0 :: Word32

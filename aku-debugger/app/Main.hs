@@ -49,8 +49,8 @@ applyCommand command cpu = case command of
         SetMemory a vs  -> return $ cpu & memory .~ M.setMemWords (cpu^.memory) a vs
         SetRegister r v -> return $ cpu & registers .~ R.writeRegister (cpu^.registers) r v
         Continue        -> return $ fst $ executeUntilHalt cpu
-        ShowStall       -> print (stall cpu) >> return cpu
-        ShowStomp       -> print (stomp cpu) >> return cpu
+        --ShowStall       -> print (stall cpu) >> return cpu
+        --ShowStomp       -> print (stomp cpu) >> return cpu
         Quit            -> return cpu
 
 extractWriter :: Writer w a -> a

@@ -20,7 +20,6 @@ stmtToInstruction addr labels stmt =
         ADD d s1 s2     -> Right [I.ADD d s1 s2]
         ADDI d s i      -> Right [I.ADDI d s i]
         NAND d s1 s2    -> Right [I.NAND d s1 s2]
-        LUI d u         -> Right [I.LUI d u]
         SW s1 s2 i      -> Right [I.SW s1 s2 i]
         LW d s i        -> Right [I.LW d s i]
         BEQI s1 s2 i    -> Right [I.BEQ s1 s2 i]
