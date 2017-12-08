@@ -34,8 +34,11 @@ initialRST = Map.fromList [
 makeRSVs :: RSVType -> Int -> Map.Map RSVId (Maybe RSVInstruction)
 makeRSVs t n = Map.fromList $ map (\i -> (RSVId t i, Nothing)) [1..n]
 
-initialLoadStoreQueue :: Map.Map RSVId (Maybe RSVInstruction)
-initialLoadStoreQueue = makeRSVs LoadStore 4
+initialLoadStoreQueue :: LSQ
+initialLoadStoreQueue = LSQ {
+      _lsqQueued = []
+    , _lsqUnqueued = map (RSVId LoadStore) [1..size]
+    } where size = 4
 
 initialRSVs :: Map.Map RSVId (Maybe RSVInstruction)
 initialRSVs = makeRSVs QuickInt 2 `Map.union` makeRSVs SlowInt 2 `Map.union` makeRSVs Branch 1
@@ -47,8 +50,9 @@ data CPU = CPU {
     , _halted :: Bool
     , _pc :: Int
     , _rst :: RST
-    , _loadStoreQueue :: Map.Map RSVId (Maybe RSVInstruction)
+    , _loadStoreQueue :: LSQ
     , _rsv :: Map.Map RSVId (Maybe RSVInstruction)
+    , _unresolvedBranch :: Bool
 } deriving (Eq)
 
 makeLenses ''CPU
@@ -64,7 +68,7 @@ instance Show CPU where
                show (cpu^.rsv)
 
 initialCPU :: CPU
-initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialLoadStoreQueue initialRSVs
+initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialLoadStoreQueue initialRSVs False
 
 update :: CPU -> Writer Stats CPU
 update cpu = writer (cpu', Stats 1)
@@ -86,9 +90,9 @@ dispatch :: CPU -> CPU
 dispatch cpu = case rsvIdx of
     Nothing -> cpu
     Just idx -> case rsvType of
-        QuickInt    -> dispatchInt idx insn cpu
+        QuickInt    -> dispatchNormal idx insn cpu
+        Branch      -> dispatchNormal idx insn cpu & unresolvedBranch .~ True
         LoadStore   -> dispatchLoadStore idx insn cpu
-        Branch      -> dispatchBranch idx insn cpu
     where insn = M.getInstruction (cpu^.program) (cpu^.pc)
           op = insToOp insn
           rsvType = opToRSVType op
@@ -129,8 +133,8 @@ makeRSVInstruction cpu insn = res
                 Nothing -> RSOperand $ readRegister (cpu^.registers) rs
                 Just i  -> RSRSV i
 
-dispatchInt :: RSVId -> Instruction -> CPU -> CPU
-dispatchInt rsvId insn cpu =
+dispatchNormal :: RSVId -> Instruction -> CPU -> CPU
+dispatchNormal rsvId insn cpu =
     cpu & rsv %~ Map.adjust (const $ Just $ makeRSVInstruction cpu insn) rsvId
         & rst %~ (case dest of
             Nothing -> id
@@ -140,6 +144,3 @@ dispatchInt rsvId insn cpu =
 
 dispatchLoadStore :: RSVId -> Instruction -> CPU -> CPU
 dispatchLoadStore = undefined
-
-dispatchBranch :: RSVId -> Instruction -> CPU -> CPU
-dispatchBranch = undefined
