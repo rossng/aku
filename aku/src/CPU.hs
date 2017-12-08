@@ -5,6 +5,7 @@ module CPU where
 import qualified Data.Vector as V
 import Data.Word
 import Data.Int
+import Data.List
 import Control.Lens
 import Data.Bits
 import Data.Maybe
@@ -30,14 +31,14 @@ initialRST = Map.fromList [
     , (X7, Nothing)
     ]
 
-makeRSVs :: RSVType -> Int -> [RSV]
-makeRSVs t n = map (\i -> RSV (RSVId t i) Nothing) [1..n]
+makeRSVs :: RSVType -> Int -> Map.Map RSVId (Maybe RSVInstruction)
+makeRSVs t n = Map.fromList $ map (\i -> (RSVId t i, Nothing)) [1..n]
 
-initialLoadStoreQueue :: [RSV]
+initialLoadStoreQueue :: Map.Map RSVId (Maybe RSVInstruction)
 initialLoadStoreQueue = makeRSVs LoadStore 4
 
-initialRSVs :: [RSV]
-initialRSVs = makeRSVs QuickInt 2 ++ makeRSVs SlowInt 2 ++ makeRSVs Branch 1
+initialRSVs :: Map.Map RSVId (Maybe RSVInstruction)
+initialRSVs = makeRSVs QuickInt 2 `Map.union` makeRSVs SlowInt 2 `Map.union` makeRSVs Branch 1
 
 data CPU = CPU {
       _program :: M.Program
@@ -46,8 +47,8 @@ data CPU = CPU {
     , _halted :: Bool
     , _pc :: Int
     , _rst :: RST
-    , _loadStoreQueue :: [RSV]
-    , _rsv :: [RSV]
+    , _loadStoreQueue :: Map.Map RSVId (Maybe RSVInstruction)
+    , _rsv :: Map.Map RSVId (Maybe RSVInstruction)
 } deriving (Eq)
 
 makeLenses ''CPU
@@ -82,19 +83,63 @@ opToRSVType OPJALR = Branch
 opToRSVType OPHALT = Branch
 
 dispatch :: CPU -> CPU
-dispatch cpu = case rsvType of
-    QuickInt    -> dispatchInt insn cpu
-    LoadStore   -> dispatchLoadStore insn cpu
-    Branch      -> dispatchBranch insn cpu
+dispatch cpu = case rsvIdx of
+    Nothing -> cpu
+    Just idx -> case rsvType of
+        QuickInt    -> dispatchInt idx insn cpu
+        LoadStore   -> dispatchLoadStore idx insn cpu
+        Branch      -> dispatchBranch idx insn cpu
     where insn = M.getInstruction (cpu^.program) (cpu^.pc)
           op = insToOp insn
           rsvType = opToRSVType op
+          rsvIdx = findEmptyRsv rsvType cpu
 
-dispatchInt :: Instruction -> CPU -> CPU
-dispatchInt = undefined
+findEmptyRsv :: RSVType -> CPU -> Maybe RSVId
+findEmptyRsv t cpu = case t of
+    LoadStore   -> undefined -- TODO get next slot in lsq
+    _           -> case emptyRsvsOfType of
+        [] -> Nothing
+        (i,_):_ -> Just i
+    where rsvsOfType = Map.filterWithKey (\(RSVId t' _) _ -> t == t') (cpu^.rsv)
+          emptyRsvsOfType = Map.toList $ Map.filter (== Nothing) rsvsOfType
 
-dispatchLoadStore :: Instruction -> CPU -> CPU
+makeRSVInstruction :: CPU -> Instruction -> RSVInstruction
+makeRSVInstruction cpu insn = res
+    where
+        res = case insn of
+            ADD d s1 s2     -> ADD () s1' s2'
+            ADDI d s1 i     -> ADDI () s1' i
+            NAND d s1 s2    -> NAND () s1' s2'
+            SW s1 s2 i      -> SW s1' s2' i
+            LW d s1 i       -> LW () s1' i
+            BEQ s1 s2 i     -> BEQ s1' s2' i
+            BLT s1 s2 i     -> BLT s1' s2' i
+            JALR d s1       -> JALR () s1'
+            HALT            -> HALT
+        s1' = case source1 insn of
+            -- if the RST does not have an entry for rs, get register value directly
+            Nothing -> RSNoRegister
+            Just rs -> case (cpu^.rst) Map.! rs of
+                Nothing -> RSOperand $ readRegister (cpu^.registers) rs
+                Just i  -> RSRSV i
+        s2' = case source2 insn of
+            -- if the RST does not have an entry for rs, get register value directly
+            Nothing -> RSNoRegister
+            Just rs -> case (cpu^.rst) Map.! rs of
+                Nothing -> RSOperand $ readRegister (cpu^.registers) rs
+                Just i  -> RSRSV i
+
+dispatchInt :: RSVId -> Instruction -> CPU -> CPU
+dispatchInt rsvId insn cpu =
+    cpu & rsv %~ Map.adjust (const $ Just $ makeRSVInstruction cpu insn) rsvId
+        & rst %~ (case dest of
+            Nothing -> id
+            Just d  -> Map.adjust (const $ Just rsvId) d)
+    where dest = writesRegister insn
+
+
+dispatchLoadStore :: RSVId -> Instruction -> CPU -> CPU
 dispatchLoadStore = undefined
 
-dispatchBranch :: Instruction -> CPU -> CPU
+dispatchBranch :: RSVId -> Instruction -> CPU -> CPU
 dispatchBranch = undefined
