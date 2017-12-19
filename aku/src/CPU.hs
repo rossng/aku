@@ -18,6 +18,7 @@ import qualified Memory as M
 import ReservationStation
 import RegisterStatusTable
 import Stats
+import ExecutionUnit
 
 initialRST :: RST
 initialRST = Map.fromList [
@@ -31,17 +32,23 @@ initialRST = Map.fromList [
     , (X7, Nothing)
     ]
 
-makeRSVs :: RSVType -> Int -> Map.Map RSVId (Maybe RSVInstruction)
-makeRSVs t n = Map.fromList $ map (\i -> (RSVId t i, Nothing)) [1..n]
+initialReorderBuffer :: ROB
+initialReorderBuffer = ROB {
+      _robFilled = []
+    , _robEmpty = [1..size]
+    } where size = 16
 
-initialLoadStoreQueue :: LSQ
-initialLoadStoreQueue = LSQ {
-      _lsqQueued = []
-    , _lsqUnqueued = map (RSVId LoadStore) [1..size]
-    } where size = 4
+initialRSVs :: RSVs
+initialRSVs = makeRSVs QuickInt 2
+    `Map.union` makeRSVs LoadStore 2
+    `Map.union` makeRSVs SlowInt 2
+    `Map.union` makeRSVs Branch 1
 
-initialRSVs :: Map.Map RSVId (Maybe RSVInstruction)
-initialRSVs = makeRSVs QuickInt 2 `Map.union` makeRSVs SlowInt 2 `Map.union` makeRSVs Branch 1
+initialEUs :: EUs
+initialEUs =    makeEUs QuickInt 1
+    `Map.union` makeEUs LoadStore 1
+    `Map.union` makeEUs SlowInt 1
+    `Map.union` makeEUs Branch 1
 
 data CPU = CPU {
       _program :: M.Program
@@ -50,9 +57,10 @@ data CPU = CPU {
     , _halted :: Bool
     , _pc :: Int
     , _rst :: RST
-    , _loadStoreQueue :: LSQ
-    , _rsv :: Map.Map RSVId (Maybe RSVInstruction)
+    , _rob :: ROB
+    , _rsv :: RSVs
     , _unresolvedBranch :: Bool
+    , _executionUnits :: EUs
 } deriving (Eq)
 
 makeLenses ''CPU
@@ -64,11 +72,11 @@ instance Show CPU where
                (if cpu^.halted then "HALTED" else "ACTIVE") ++ "\n" ++
                show (cpu^.pc) ++ "\n" ++
                show (cpu^.rst) ++ "\n" ++
-               show (cpu^.loadStoreQueue) ++ "\n" ++
+               show (cpu^.rob) ++ "\n" ++
                show (cpu^.rsv)
 
 initialCPU :: CPU
-initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialLoadStoreQueue initialRSVs False
+initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialReorderBuffer initialRSVs False initialEUs
 
 update :: CPU -> Writer Stats CPU
 update cpu = writer (cpu', Stats 1)
@@ -87,24 +95,32 @@ opToRSVType OPJALR = Branch
 opToRSVType OPHALT = Branch
 
 dispatch :: CPU -> CPU
-dispatch cpu = case rsvIdx of
-    Nothing -> cpu
-    Just idx -> case rsvType of
-        QuickInt    -> dispatchNormal idx insn cpu
-        Branch      -> dispatchNormal idx insn cpu & unresolvedBranch .~ True
-        LoadStore   -> dispatchLoadStore idx insn cpu
-    where insn = M.getInstruction (cpu^.program) (cpu^.pc)
-          op = insToOp insn
-          rsvType = opToRSVType op
-          rsvIdx = findEmptyRsv rsvType cpu
+dispatch cpu = if cpu^.unresolvedBranch
+    then cpu
+    else case slots of
+        Nothing -> cpu
+        Just (rsvId, robId) -> case rsvType of
+            QuickInt    -> dispatchNormal rsvId robId insn cpu
+            Branch      -> dispatchNormal rsvId robId insn cpu & unresolvedBranch .~ True
+            LoadStore   -> dispatchNormal rsvId robId insn cpu
+        where
+            insn = M.getInstruction (cpu^.program) (cpu^.pc)
+            op = insToOp insn
+            rsvType = opToRSVType op
+            slots = findEmptySlots rsvType (cpu^.rsv) (cpu^.rob)
 
-findEmptyRsv :: RSVType -> CPU -> Maybe RSVId
-findEmptyRsv t cpu = case t of
-    LoadStore   -> undefined -- TODO get next slot in lsq
-    _           -> case emptyRsvsOfType of
+
+findEmptySlots :: RSVType -> RSVs -> ROB -> Maybe (RSVId, ROBId)
+findEmptySlots t rsvs rob = do
+    rsvId <- findEmptyRsv t rsvs
+    robId <- nextSlot rob
+    return (rsvId, robId)
+
+findEmptyRsv :: RSVType -> RSVs -> Maybe RSVId
+findEmptyRsv t rsvs = case emptyRsvsOfType of
         [] -> Nothing
         (i,_):_ -> Just i
-    where rsvsOfType = Map.filterWithKey (\(RSVId t' _) _ -> t == t') (cpu^.rsv)
+    where rsvsOfType = Map.filterWithKey (\(RSVId t' _) _ -> t == t') rsvs
           emptyRsvsOfType = Map.toList $ Map.filter (== Nothing) rsvsOfType
 
 makeRSVInstruction :: CPU -> Instruction -> RSVInstruction
@@ -125,22 +141,54 @@ makeRSVInstruction cpu insn = res
             Nothing -> RSNoRegister
             Just rs -> case (cpu^.rst) Map.! rs of
                 Nothing -> RSOperand $ readRegister (cpu^.registers) rs
-                Just i  -> RSRSV i
+                Just i  -> RSROB i
         s2' = case source2 insn of
             -- if the RST does not have an entry for rs, get register value directly
             Nothing -> RSNoRegister
             Just rs -> case (cpu^.rst) Map.! rs of
                 Nothing -> RSOperand $ readRegister (cpu^.registers) rs
-                Just i  -> RSRSV i
+                Just i  -> RSROB i
 
-dispatchNormal :: RSVId -> Instruction -> CPU -> CPU
-dispatchNormal rsvId insn cpu =
-    cpu & rsv %~ Map.adjust (const $ Just $ makeRSVInstruction cpu insn) rsvId
+makeROBEntry :: CPU -> Instruction -> ROBEntry
+makeROBEntry cpu insn = result
+    where
+        result = case insn of
+            ADD d s1 s2     -> ROBOperation d Nothing
+            ADDI d s1 i     -> ROBOperation d Nothing
+            NAND d s1 s2    -> ROBOperation d Nothing
+            SW s1 s2 i      -> ROBStore Nothing Nothing
+            LW d s1 i       -> ROBLoad d Nothing
+            BEQ s1 s2 i     -> ROBBranch Nothing Nothing
+            BLT s1 s2 i     -> ROBBranch Nothing Nothing
+            JALR d s1       -> ROBBranch Nothing (Just True)
+            HALT            -> ROBHalt
+
+dispatchNormal :: RSVId -> ROBId -> Instruction -> CPU -> CPU
+dispatchNormal rsvId robId insn cpu =
+    cpu & rsv %~ Map.adjust (const $ Just (rsvInsn, robId)) rsvId
+        & rob %~ enqueue robEntry
         & rst %~ (case dest of
             Nothing -> id
-            Just d  -> Map.adjust (const $ Just rsvId) d)
+            Just d  -> Map.adjust (const $ Just robId) d)
+        & pc %~ (+1)
     where dest = writesRegister insn
+          rsvInsn = makeRSVInstruction cpu insn
+          robEntry = makeROBEntry cpu insn
+
+issue :: CPU -> CPU
+issue = issueBranch . issueLoadStore . issueQuickInt
 
 
-dispatchLoadStore :: RSVId -> Instruction -> CPU -> CPU
-dispatchLoadStore = undefined
+issueQuickInt :: CPU -> CPU
+issueQuickInt cpu = if hasFreeEU QuickInt (cpu^.executionUnits) then cpu' else cpu
+    where cpu' = cpu & rsv .~ rsv'
+                     & executionUnits %~ case maybeContents of
+                        Nothing -> id
+                        Just contents -> pushEU QuickInt contents
+          (rsv', maybeContents) = popRSV QuickInt (cpu^.rsv)
+
+issueLoadStore :: CPU -> CPU
+issueLoadStore cpu = undefined
+
+issueBranch :: CPU -> CPU
+issueBranch cpu = undefined
