@@ -11,7 +11,7 @@ import qualified Data.Map.Strict as Map
 
 type RSVs = Map.Map RSVId (Maybe (RSVInstruction, ROBId))
 
-data RSVType = LoadStore | QuickInt | SlowInt | Branch deriving (Eq, Show, Ord)
+data RSVType =  Load | Address | QuickInt | SlowInt | Branch deriving (Eq, Show, Ord)
 data RSVId = RSVId RSVType Int deriving (Eq, Show, Ord)
 
 data RSSource =
@@ -86,3 +86,7 @@ dequeue rob = case rob^.robFilled of
     s:_ -> (rob & robFilled     %~ tail
                 & robEmpty      %~ (++ [fst s]), Just $ snd s)
 
+
+
+storesBefore :: ROBId -> ROB -> [(ROBId, ROBEntry)]
+storesBefore robId rob = takeWhile (\(i, _) -> i < robId) (rob^.robFilled)

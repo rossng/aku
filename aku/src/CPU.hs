@@ -40,15 +40,17 @@ initialReorderBuffer = ROB {
 
 initialRSVs :: RSVs
 initialRSVs = makeRSVs QuickInt 2
-    `Map.union` makeRSVs LoadStore 2
     `Map.union` makeRSVs SlowInt 2
     `Map.union` makeRSVs Branch 1
+    `Map.union` makeRSVs Address 2
+    `Map.union` makeRSVs Load 2
 
 initialEUs :: EUs
 initialEUs =    makeEUs QuickInt 1
-    `Map.union` makeEUs LoadStore 1
     `Map.union` makeEUs SlowInt 1
     `Map.union` makeEUs Branch 1
+    `Map.union` makeEUs Address 1
+    `Map.union` makeEUs Load 1
 
 data CPU = CPU {
       _program :: M.Program
@@ -87,8 +89,8 @@ opToRSVType :: Opcode -> RSVType
 opToRSVType OPADD = QuickInt
 opToRSVType OPADDI = QuickInt
 opToRSVType OPNAND = QuickInt
-opToRSVType OPSW = LoadStore
-opToRSVType OPLW = LoadStore
+opToRSVType OPSW = Address
+opToRSVType OPLW = Address
 opToRSVType OPBEQ = Branch
 opToRSVType OPBLT = Branch
 opToRSVType OPJALR = Branch
@@ -102,7 +104,8 @@ dispatch cpu = if cpu^.unresolvedBranch
         Just (rsvId, robId) -> case rsvType of
             QuickInt    -> dispatchNormal rsvId robId insn cpu
             Branch      -> dispatchNormal rsvId robId insn cpu & unresolvedBranch .~ True
-            LoadStore   -> dispatchNormal rsvId robId insn cpu
+            Address     -> dispatchNormal rsvId robId insn cpu
+            Load        -> dispatchNormal rsvId robId insn cpu
         where
             insn = M.getInstruction (cpu^.program) (cpu^.pc)
             op = insToOp insn
@@ -176,29 +179,19 @@ dispatchNormal rsvId robId insn cpu =
           robEntry = makeROBEntry cpu insn
 
 issue :: CPU -> CPU
-issue = issueBranch . issueLoadStore . issueQuickInt
+issue = issueTo Branch . issueTo Load . issueTo Address . issueTo QuickInt
 
-
-issueQuickInt :: CPU -> CPU
-issueQuickInt cpu = if hasFreeEU QuickInt (cpu^.executionUnits) then cpu' else cpu
+issueTo :: RSVType -> CPU -> CPU
+issueTo t cpu = if hasFreeEU t (cpu^.executionUnits) then cpu' else cpu
     where cpu' = cpu & rsv .~ rsv'
                      & executionUnits %~ case maybeContents of
                         Nothing -> id
-                        Just contents -> pushEU QuickInt contents
-          (rsv', maybeContents) = popRSV QuickInt (cpu^.rsv)
+                        Just contents -> pushEU t contents
+          (rsv', maybeContents) = popRSV t (cpu^.rsv)
 
-issueLoadStore :: CPU -> CPU
-issueLoadStore cpu = if hasFreeEU LoadStore (cpu^.executionUnits) then cpu' else cpu
-     where cpu' = cpu & rsv .~ rsv'
-                      & executionUnits %~ case maybeContents of
-                         Nothing -> id
-                         Just contents -> pushEU LoadStore contents
-           (rsv', maybeContents) = popRSV LoadStore (cpu^.rsv)
 
-issueBranch :: CPU -> CPU
-issueBranch cpu = if hasFreeEU Branch (cpu^.executionUnits) then cpu' else cpu
-    where cpu' = cpu & rsv .~ rsv'
-                     & executionUnits %~ case maybeContents of
-                        Nothing -> id
-                        Just contents -> pushEU Branch contents
-          (rsv', maybeContents) = popRSV Branch (cpu^.rsv)
+completeEUs :: CPU -> CPU
+completeEUs cpu = undefined
+
+execute :: CPU -> CPU
+execute cpu = cpu & executionUnits %~ stepEUs

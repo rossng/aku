@@ -4,6 +4,7 @@ module ExecutionUnit where
 import Control.Lens
 import qualified Data.Map.Strict as Map
 import Data.Word
+import Control.Arrow
 
 import ReservationStation
 import Instruction as I
@@ -41,13 +42,11 @@ popRSV t rsvs = case readyRsvs of
         (k,(insn, robId)):_ -> ( Map.adjust (const Nothing) k rsvs
                                , Just (insn, robId))
     where
-        fn :: Map.Map a (RSVInstruction, ROBId) -> Map.Map a (EUInstruction, ROBId)
-        fn = Map.mapMaybe (\(insn, robId) -> do
-                           insn' <- toEUInstruction insn
-                           return (insn', robId))
         readyRsvs :: [(RSVId, (EUInstruction, ROBId))]
         readyRsvs = Map.toList $
-            ( fn
+            ( Map.mapMaybe (\(insn, robId) -> do
+                 insn' <- toEUInstruction insn
+                 return (insn', robId))
             . Map.filterWithKey (\i _ -> rsvIdHasType t i)
             . Map.filter (\(insn, _) -> readyForDispatch insn)
             . Map.mapMaybe id) rsvs
@@ -64,3 +63,11 @@ pushEU :: RSVType -> (EUInstruction, ROBId) -> EUs -> EUs
 pushEU t contents eus = if hasFreeEU t eus then
     Map.adjust (\(max, l) -> (max, l ++ [makeEU contents])) t eus
     else eus
+
+stepEU :: EU -> EU
+stepEU eu = eu & euStatus -~ 1
+
+stepEUs :: EUs -> EUs
+stepEUs = Map.map (second stepEUGroup)
+    where stepEUGroup :: [EU] -> [EU]
+          stepEUGroup = map stepEU
