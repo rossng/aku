@@ -188,7 +188,17 @@ issueQuickInt cpu = if hasFreeEU QuickInt (cpu^.executionUnits) then cpu' else c
           (rsv', maybeContents) = popRSV QuickInt (cpu^.rsv)
 
 issueLoadStore :: CPU -> CPU
-issueLoadStore cpu = undefined
+issueLoadStore cpu = if hasFreeEU LoadStore (cpu^.executionUnits) then cpu' else cpu
+     where cpu' = cpu & rsv .~ rsv'
+                      & executionUnits %~ case maybeContents of
+                         Nothing -> id
+                         Just contents -> pushEU LoadStore contents
+           (rsv', maybeContents) = popRSV LoadStore (cpu^.rsv)
 
 issueBranch :: CPU -> CPU
-issueBranch cpu = undefined
+issueBranch cpu = if hasFreeEU Branch (cpu^.executionUnits) then cpu' else cpu
+    where cpu' = cpu & rsv .~ rsv'
+                     & executionUnits %~ case maybeContents of
+                        Nothing -> id
+                        Just contents -> pushEU Branch contents
+          (rsv', maybeContents) = popRSV Branch (cpu^.rsv)
