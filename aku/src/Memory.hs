@@ -27,8 +27,8 @@ emptyProgram = Program []
 getInstruction :: Program -> Int -> Instruction
 getInstruction (Program p) i = p V.! i
 
-getMemWord :: Memory -> Word32 -> Word32
-getMemWord (Memory mem) addr = fromMaybe (0 :: Word32) $ mem V.!? fromIntegral addr
+getMemWord :: Memory -> Int -> Word32
+getMemWord (Memory mem) addr = fromMaybe (0 :: Word32) $ mem V.!? addr
 
 getMemWords :: Memory -> Int -> Int -> V.Vector Word32
 getMemWords (Memory mem) addr len = V.slice addr len mem

@@ -36,8 +36,8 @@ toEUInstruction (I.JALR _ (RSOperand s)) = Just $ I.JALR () s
 toEUInstruction I.HALT = Just I.HALT
 toEUInstruction _ = Nothing
 
-popRSV :: RSVType -> RSVs -> (RSVs, Maybe (EUInstruction, ROBId))
-popRSV t rsvs = case readyRsvs of
+popRSV :: RSVType -> RSVs -> ROB -> (RSVs, Maybe (EUInstruction, ROBId))
+popRSV t rsvs rob = case readyRsvs of
         []                  -> (rsvs, Nothing)
         (k,(insn, robId)):_ -> ( Map.adjust (const Nothing) k rsvs
                                , Just (insn, robId))
@@ -47,6 +47,7 @@ popRSV t rsvs = case readyRsvs of
             ( Map.mapMaybe (\(insn, robId) -> do
                  insn' <- toEUInstruction insn
                  return (insn', robId))
+            . Map.filterWithKey (\i a -> not (rsvIdHasType Load i) || rsvClashesPendingStores a rob)
             . Map.filterWithKey (\i _ -> rsvIdHasType t i)
             . Map.filter (\(insn, _) -> readyForDispatch insn)
             . Map.mapMaybe id) rsvs
@@ -71,3 +72,10 @@ stepEUs :: EUs -> EUs
 stepEUs = Map.map (second stepEUGroup)
     where stepEUGroup :: [EU] -> [EU]
           stepEUGroup = map stepEU
+
+emptyGroupEUs :: (Int, [EU]) -> (Int, [EU])
+emptyGroupEUs (max, eus) = (max, eus')
+    where eus' = filter (\eu -> eu^.euStatus > 0) eus
+
+emptyCompleteEUs :: EUs -> EUs
+emptyCompleteEUs = Map.map emptyGroupEUs

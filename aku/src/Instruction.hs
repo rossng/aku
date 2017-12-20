@@ -85,24 +85,56 @@ readsRegisters (BLT (Source r1) (Source r2) _) = [r1, r2]
 readsRegisters (JALR _ (Source r1)) = [r1]
 readsRegisters HALT = []
 
-source1 :: Instruction -> Maybe RegisterName
-source1 (ADD _ (Source r) _) = Just r
-source1 (ADDI _ (Source r) _) = Just r
-source1 (NAND _ (Source r) _) = Just r
-source1 (SW (Source r) _ _) = Just r
-source1 (LW _ (Source r) _) = Just r
-source1 (BEQ (Source r) _ _) = Just r
-source1 (BLT (Source r) _ _) = Just r
-source1 (JALR _ (Source r)) = Just r
+sourceReg1 :: Instruction -> Maybe RegisterName
+sourceReg1 insn = case source1 insn of
+    Just (Source s) -> Just s
+    Nothing         -> Nothing
+
+sourceReg2 :: Instruction -> Maybe RegisterName
+sourceReg2 insn = case source2 insn of
+    Just (Source s) -> Just s
+    Nothing         -> Nothing
+
+source1 :: BaseInstruction d s u i -> Maybe s
+source1 (ADD _ s _) = Just s
+source1 (ADDI _ s _) = Just s
+source1 (NAND _ s _) = Just s
+source1 (SW s _ _) = Just s
+source1 (LW _ s _) = Just s
+source1 (BEQ s _ _) = Just s
+source1 (BLT s _ _) = Just s
+source1 (JALR _ s) = Just s
 source1 HALT = Nothing
 
-source2 :: Instruction -> Maybe RegisterName
-source2 (ADD _ _ (Source r)) = Just r
+source2 :: BaseInstruction d s u i -> Maybe s
+source2 (ADD _ _ s) = Just s
 source2 ADDI{} = Nothing
-source2 (NAND _ _ (Source r)) = Just r
-source2 (SW _ (Source r) _) = Just r
+source2 (NAND _ _ s) = Just s
+source2 (SW _ s _) = Just s
 source2 LW{} = Nothing
-source2 (BEQ _ (Source r) _) = Just r
-source2 (BLT _ (Source r) _) = Just r
+source2 (BEQ _ s _) = Just s
+source2 (BLT _ s _) = Just s
 source2 JALR{} = Nothing
 source2 HALT = Nothing
+
+updateSource1 :: s -> BaseInstruction d s u i -> BaseInstruction d s u i
+updateSource1 s' (ADD d s1 s2) = ADD d s' s2
+updateSource1 s' (ADDI d s1 i) = ADDI d s' i
+updateSource1 s' (NAND d s1 s2) = NAND d s' s2
+updateSource1 s' (SW s1 s2 i) = SW s' s2 i
+updateSource1 s' (LW d s1 i) = LW d s' i
+updateSource1 s' (BEQ s1 s2 i) = BEQ s' s2 i
+updateSource1 s' (BLT s1 s2 i) = BLT s' s2 i
+updateSource1 s' (JALR d s) = JALR d s'
+updateSource1 s' HALT = HALT
+
+updateSource2 :: s -> BaseInstruction d s u i -> BaseInstruction d s u i
+updateSource2 s' (ADD d s1 s2) = ADD d s1 s'
+updateSource2 s' (ADDI d s1 i) = ADDI d s1 i
+updateSource2 s' (NAND d s1 s2) = NAND d s1 s'
+updateSource2 s' (SW s1 s2 i) = SW s1 s' i
+updateSource2 s' (LW d s1 i) = LW d s1 i
+updateSource2 s' (BEQ s1 s2 i) = BEQ s1 s' i
+updateSource2 s' (BLT s1 s2 i) = BLT s1 s' i
+updateSource2 s' (JALR d s) = JALR d s
+updateSource2 s' HALT = HALT

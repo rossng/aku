@@ -8,6 +8,7 @@ import Registers as R
 import Memory as M
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
+import Control.Arrow
 
 type RSVs = Map.Map RSVId (Maybe (RSVInstruction, ROBId))
 
@@ -41,8 +42,26 @@ readyForDispatch (I.JALR _ (RSOperand _)) = True
 readyForDispatch I.HALT = True
 readyForDispatch _ = False
 
+updateRSVs :: ROBId -> Word32 -> RSVs -> RSVs
+updateRSVs robId operand = Map.map (fmap $ first (updateRSVInstruction robId operand))
+
+-- replace any ROBId placeholders in a reservation station
+-- with the real operand
+updateRSVInstruction :: ROBId -> Word32 -> RSVInstruction -> RSVInstruction
+updateRSVInstruction robId operand rsvInsn = insn''
+    where insn' = case source1 rsvInsn of
+                      Just (RSROB r)    -> if r == robId
+                        then updateSource1 (RSOperand operand) rsvInsn
+                        else rsvInsn
+                      _                 -> rsvInsn
+          insn'' = case source2 rsvInsn of
+                      Just (RSROB r)    -> if r == robId
+                        then updateSource2 (RSOperand operand) rsvInsn
+                        else rsvInsn
+                      _                 -> rsvInsn
+
 readyForCommit :: ROBEntry -> Bool
-readyForCommit (ROBLoad _ (Just _)) = True
+readyForCommit (ROBLoad _ (Just _) (Just _)) = True
 readyForCommit (ROBStore (Just _) (Just _)) = True
 readyForCommit (ROBOperation _ (Just _)) = True
 readyForCommit (ROBBranch (Just _) (Just _)) = True
@@ -52,12 +71,17 @@ readyForCommit _ = False
 type ROBId = Int
 
 data ROBEntry =
-      ROBLoad I.DestRegister (Maybe Word32)
+      ROBLoad I.DestRegister (Maybe Int) (Maybe Word32)
     | ROBStore (Maybe Int) (Maybe Word32)
     | ROBOperation I.DestRegister (Maybe Word32)
     | ROBBranch (Maybe Int) (Maybe Bool)
     | ROBHalt
     deriving (Show, Eq)
+
+isROBStore :: ROBEntry -> Bool
+isROBStore e = case e of
+    ROBStore{}  -> True
+    _           -> False
 
 data ROB = ROB {
       _robFilled :: [(ROBId, ROBEntry)]
@@ -86,7 +110,27 @@ dequeue rob = case rob^.robFilled of
     s:_ -> (rob & robFilled     %~ tail
                 & robEmpty      %~ (++ [fst s]), Just $ snd s)
 
+getROBEntry :: ROB -> ROBId -> ROBEntry
+getROBEntry rob robId = snd $ head $ filter (\(i,_) -> i == robId) (rob^.robFilled)
 
+updateROBEntry :: ROBId -> ROBEntry -> ROB -> ROB
+updateROBEntry robId robEntry rob = rob & robFilled %~ map fn
+    where fn (i, entry) = if i == robId
+            then (i, robEntry)
+            else (i, entry)
 
-storesBefore :: ROBId -> ROB -> [(ROBId, ROBEntry)]
-storesBefore robId rob = takeWhile (\(i, _) -> i < robId) (rob^.robFilled)
+entriesBeforeRobId :: ROBId -> ROB -> [(ROBId, ROBEntry)]
+entriesBeforeRobId robId rob = takeWhile (\(i, _) -> i < robId) (rob^.robFilled)
+
+pendingStoresWithAddress :: Int -> ROBId -> ROB -> Bool
+pendingStoresWithAddress addr robId rob = any (\(i,e) -> storeToAddr addr e) (entriesBeforeRobId robId rob)
+    where storeToAddr :: Int -> ROBEntry -> Bool
+          storeToAddr addr e = case e of
+            ROBStore (Just a) _ -> a == addr
+            _                   -> False
+
+rsvClashesPendingStores :: (RSVInstruction, ROBId) -> ROB -> Bool
+rsvClashesPendingStores (rsvInsn, robId) rob = case rsvInsn of
+    I.LW _ (RSOperand a) (ImmS o) -> pendingStoresWithAddress (fromIntegral a + fromIntegral o) robId rob
+    I.LW{}                        -> True
+    _                             -> False

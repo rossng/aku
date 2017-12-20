@@ -139,13 +139,13 @@ makeRSVInstruction cpu insn = res
             BLT s1 s2 i     -> BLT s1' s2' i
             JALR d s1       -> JALR () s1'
             HALT            -> HALT
-        s1' = case source1 insn of
+        s1' = case sourceReg1 insn of
             -- if the RST does not have an entry for rs, get register value directly
             Nothing -> RSNoRegister
             Just rs -> case (cpu^.rst) Map.! rs of
                 Nothing -> RSOperand $ readRegister (cpu^.registers) rs
                 Just i  -> RSROB i
-        s2' = case source2 insn of
+        s2' = case sourceReg2 insn of
             -- if the RST does not have an entry for rs, get register value directly
             Nothing -> RSNoRegister
             Just rs -> case (cpu^.rst) Map.! rs of
@@ -160,7 +160,7 @@ makeROBEntry cpu insn = result
             ADDI d s1 i     -> ROBOperation d Nothing
             NAND d s1 s2    -> ROBOperation d Nothing
             SW s1 s2 i      -> ROBStore Nothing Nothing
-            LW d s1 i       -> ROBLoad d Nothing
+            LW d s1 i       -> ROBLoad d Nothing Nothing
             BEQ s1 s2 i     -> ROBBranch Nothing Nothing
             BLT s1 s2 i     -> ROBBranch Nothing Nothing
             JALR d s1       -> ROBBranch Nothing (Just True)
@@ -187,11 +187,54 @@ issueTo t cpu = if hasFreeEU t (cpu^.executionUnits) then cpu' else cpu
                      & executionUnits %~ case maybeContents of
                         Nothing -> id
                         Just contents -> pushEU t contents
-          (rsv', maybeContents) = popRSV t (cpu^.rsv)
+          (rsv', maybeContents) = popRSV t (cpu^.rsv) (cpu^.rob)
 
+
+-- given the contents of the ROB and an execution unit, if the EU is finished,
+-- compute the update to be published to the CDB and any changes to the ROB entry
+getEUResult :: CPU -> EU -> (ROBEntry, Maybe Word32)
+getEUResult cpu eu = if eu^.euStatus > 0
+    then (robEntry, Nothing)
+    else case (eu^.euInstruction, robEntry) of
+    (ADD () s1 s2, ROBOperation d r)
+        -> (ROBOperation d (Just (s1 + s2)), Just (s1 + s2))
+    (ADDI () s (ImmS i), ROBOperation d r)
+        -> (ROBOperation d (Just (s + fromIntegral i)), Just (s + fromIntegral i))
+    (NAND () s1 s2, _)
+        -> undefined
+    (SW s1 s2 (ImmS i), ROBStore d r)
+        -> (ROBStore (Just (fromIntegral s2 + fromIntegral i)) (Just s1), Nothing)
+    (LW () s (ImmS i), ROBLoad d Nothing Nothing)
+        -> (ROBLoad d (Just (fromIntegral s + fromIntegral i)) Nothing, Nothing)
+    (LW () s (ImmS i), ROBLoad d (Just addr) Nothing)
+        -> (ROBLoad d (Just addr) (Just (M.getMemWord mem addr)), Just (M.getMemWord mem addr))
+    (BEQ s1 s2 (ImmS i), ROBBranch Nothing Nothing)
+        -> (ROBBranch (Just (fromIntegral i)) (Just (s1 == s2)), Nothing)
+    (BLT s1 s2 (ImmS i), ROBBranch Nothing Nothing)
+        -> (ROBBranch (Just (fromIntegral i)) (Just (s1 < s2)), Nothing)
+    (JALR () s, ROBBranch d r)
+        -> (ROBBranch (Just (fromIntegral s)) r, Nothing)
+    where robEntry = getROBEntry (cpu^.rob) (eu^.euROBId)
+          mem = cpu^.memory
+
+
+getEUResults :: CPU -> [(ROBId, ROBEntry, Maybe Word32)]
+getEUResults cpu = zipWith (\a (b,c) -> (a,b,c)) (map (^.euROBId) completableEUs) (map (getEUResult cpu) completableEUs)
+    where completableEUs =
+              filter (\e -> e^.euStatus == 0)
+            $ concatMap snd
+            $ Map.toList
+            $ Map.map snd (cpu^.executionUnits)
 
 completeEUs :: CPU -> CPU
-completeEUs cpu = undefined
+completeEUs cpu = cpu   & rob .~ foldr (\(robId, robEntry, _) r -> updateROBEntry robId robEntry r) (cpu^.rob) euResults
+                        & rsv .~ foldr (\(robId, _, result) r -> updateRSVs robId result r) (cpu^.rsv) justEuResults
+                        & executionUnits %~ emptyCompleteEUs
+    where euResults = getEUResults cpu
+          justEuResults = mapMaybe (\(robId, robEntry, result) -> do { result' <- result; return (robId, robEntry, result') }) euResults
 
 execute :: CPU -> CPU
-execute cpu = cpu & executionUnits %~ stepEUs
+execute cpu = completeEUs $ cpu & executionUnits %~ stepEUs
+
+commit :: CPU -> CPU
+commit cpu = undefined
