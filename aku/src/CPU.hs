@@ -32,8 +32,8 @@ initialRST = Map.fromList [
     , (X7, Nothing)
     ]
 
-initialReorderBuffer :: ROB
-initialReorderBuffer = ROB {
+initialROB :: ROB
+initialROB = ROB {
       _robFilled = []
     , _robEmpty = [1..size]
     } where size = 16
@@ -80,15 +80,14 @@ instance Show CPU where
                "EUs:    " ++ show (cpu^.executionUnits)
 
 initialCPU :: CPU
-initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialReorderBuffer initialRSVs False initialEUs
+initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialROB initialRSVs False initialEUs
 
 update :: CPU -> Writer Stats CPU
 update cpu = writer (cpu', Stats 1)
   where
     cpu' = if cpu^.halted
            then cpu
---            else (dispatch . issue . execute . commit) cpu
-           else (commit . execute . issue . dispatch) cpu
+           else (issue.execute.dispatch.commit) cpu
 
 opToRSVType :: Opcode -> RSVType
 opToRSVType OPADD = QuickInt
@@ -102,20 +101,20 @@ opToRSVType OPJALR = Branch
 opToRSVType OPHALT = Branch
 
 dispatch :: CPU -> CPU
-dispatch cpu = if cpu^.unresolvedBranch
-    then cpu
-    else case slots of
-        Nothing -> cpu
-        Just (rsvId, robId) -> case rsvType of
-            QuickInt    -> dispatchNormal rsvId robId insn cpu
-            Branch      -> dispatchNormal rsvId robId insn cpu & unresolvedBranch .~ True
-            Address     -> dispatchNormal rsvId robId insn cpu
-            Load        -> dispatchNormal rsvId robId insn cpu
-        where
-            insn = M.getInstruction (cpu^.program) (cpu^.pc)
-            op = insToOp insn
-            rsvType = opToRSVType op
-            slots = findEmptySlots rsvType (cpu^.rsv) (cpu^.rob)
+dispatch cpu = case M.safeGetInstruction (cpu^.program) (cpu^.pc) of
+    Just insn ->
+        case slots of
+            Nothing -> cpu
+            Just (rsvId, robId) -> case rsvType of
+                QuickInt    -> dispatchNormal rsvId robId insn cpu
+                Branch      -> if cpu^.unresolvedBranch then cpu else dispatchNormal rsvId robId insn cpu & unresolvedBranch .~ True
+                Address     -> dispatchNormal rsvId robId insn cpu
+                Load        -> dispatchNormal rsvId robId insn cpu
+            where
+                op = insToOp insn
+                rsvType = opToRSVType op
+                slots = findEmptySlots rsvType (cpu^.rsv) (cpu^.rob)
+    Nothing -> cpu
 
 
 findEmptySlots :: RSVType -> RSVs -> ROB -> Maybe (RSVId, ROBId)
@@ -166,10 +165,10 @@ makeROBEntry cpu insn = result
             NAND d s1 s2    -> ROBOperation d Nothing
             SW s1 s2 i      -> ROBStore Nothing Nothing
             LW d s1 i       -> ROBLoad d Nothing Nothing
-            BEQ s1 s2 i     -> ROBBranch (cpu^.pc) Nothing Nothing
-            BLT s1 s2 i     -> ROBBranch (cpu^.pc) Nothing Nothing
-            JALR d s1       -> ROBBranch (cpu^.pc) Nothing (Just True)
-            HALT            -> ROBHalt
+            BEQ s1 s2 i     -> ROBBranch (cpu^.pc) False Nothing Nothing
+            BLT s1 s2 i     -> ROBBranch (cpu^.pc) False Nothing Nothing
+            JALR d s1       -> ROBBranch (cpu^.pc) False Nothing (Just True)
+            HALT            -> ROBHalt False
 
 dispatchNormal :: RSVId -> ROBId -> Instruction -> CPU -> CPU
 dispatchNormal rsvId robId insn cpu =
@@ -213,14 +212,14 @@ getEUResult cpu eu = if eu^.euStatus > 0
         -> (ROBLoad d (Just (fromIntegral s + fromIntegral i)) Nothing, Nothing)
     (LW () s (ImmS i), ROBLoad d (Just addr) Nothing)
         -> (ROBLoad d (Just addr) (Just (M.getMemWord addr mem)), Just (M.getMemWord addr mem))
-    (BEQ s1 s2 (ImmS i), ROBBranch p Nothing Nothing)
-        -> (ROBBranch p (Just (p + 1 + fromIntegral i)) (Just (s1 == s2)), Nothing)
-    (BLT s1 s2 (ImmS i), ROBBranch p Nothing Nothing)
-        -> (ROBBranch p (Just (p + 1 + fromIntegral i)) (Just (s1 < s2)), Nothing)
-    (JALR () s, ROBBranch p d r)
-        -> (ROBBranch p (Just (fromIntegral s)) r, Nothing)
-    (HALT, ROBHalt)
-        -> (ROBHalt, Nothing)
+    (BEQ s1 s2 (ImmS i), ROBBranch pc' pred Nothing Nothing)
+        -> (ROBBranch pc' pred (Just (pc' + 1 + fromIntegral i)) (Just (s1 == s2)), Nothing)
+    (BLT s1 s2 (ImmS i), ROBBranch pc' pred Nothing Nothing)
+        -> (ROBBranch pc' pred (Just (pc' + 1 + fromIntegral i)) (Just (s1 < s2)), Nothing)
+    (JALR () s, ROBBranch pc' pred d r)
+        -> (ROBBranch pc' pred (Just (fromIntegral s)) r, Nothing)
+    (HALT, ROBHalt _)
+        -> (ROBHalt True, Nothing)
     where robEntry = getROBEntry (cpu^.rob) (eu^.euROBId)
           mem = cpu^.memory
 
@@ -255,16 +254,23 @@ commitROBEntry robEntry cpu = case robEntry of
     ROBOperation (Dest dest) (Just value)
         -> cpu & registers %~ writeRegister dest value
                & rst %~ Map.adjust (const Nothing) dest
-    ROBBranch _ (Just addr) (Just taken)
-        -> cpu & pc .~ (if taken then addr else cpu^.pc)
-               & unresolvedBranch .~ False
-    ROBHalt
+    ROBBranch _ pred (Just addr) (Just taken)
+        -> if pred == taken
+           then cpu & pc .~ (if taken then addr else cpu^.pc)
+                    & unresolvedBranch .~ False
+           else cpu & pc .~ (if taken then addr else cpu^.pc)
+                    & unresolvedBranch .~ False
+                    & rst .~ initialRST
+                    & rob .~ initialROB
+                    & rsv .~ initialRSVs
+                    & executionUnits .~ initialEUs
+    ROBHalt True
         -> cpu & halted .~ True
     _   -> cpu
 
 commit :: CPU -> CPU
-commit cpu = cpu' & rob .~ rob'
+commit cpu = cpu'
     where (rob', robEntry) = dequeue (cpu^.rob)
           cpu' = case robEntry of
-                     Just entry  -> commitROBEntry entry cpu
-                     Nothing     -> cpu
+                     Just entry  -> commitROBEntry entry (cpu & rob .~ rob')
+                     Nothing     -> cpu & rob .~ rob'

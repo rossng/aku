@@ -27,6 +27,9 @@ emptyProgram = Program []
 getInstruction :: Program -> Int -> Instruction
 getInstruction (Program p) i = p V.! i
 
+safeGetInstruction :: Program -> Int -> Maybe Instruction
+safeGetInstruction (Program p) i = p V.!? i
+
 getMemWord :: Int -> Memory -> Word32
 getMemWord addr (Memory mem) = fromMaybe (0 :: Word32) $ mem V.!? addr
 

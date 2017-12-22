@@ -64,8 +64,8 @@ readyForCommit :: ROBEntry -> Bool
 readyForCommit (ROBLoad _ (Just _) (Just _)) = True
 readyForCommit (ROBStore (Just _) (Just _)) = True
 readyForCommit (ROBOperation _ (Just _)) = True
-readyForCommit (ROBBranch _ (Just _) (Just _)) = True
-readyForCommit ROBHalt = True
+readyForCommit (ROBBranch _ _ (Just _) (Just _)) = True
+readyForCommit (ROBHalt ready) = ready
 readyForCommit _ = False
 
 type ROBId = Int
@@ -74,8 +74,8 @@ data ROBEntry =
       ROBLoad I.DestRegister (Maybe Int) (Maybe Word32)
     | ROBStore (Maybe Int) (Maybe Word32)
     | ROBOperation I.DestRegister (Maybe Word32)
-    | ROBBranch Int (Maybe Int) (Maybe Bool)
-    | ROBHalt
+    | ROBBranch Int Bool (Maybe Int) (Maybe Bool)
+    | ROBHalt Bool
     deriving (Show, Eq)
 
 isROBStore :: ROBEntry -> Bool

@@ -15,10 +15,10 @@ import qualified Memory as M
 testForwarding = TestList [
         testForwarding1
       , testForwarding2
-      , testForwarding3
-      , testForwarding4
-      , testForwarding5
-      , testForwarding6
+--       , testForwarding3
+--       , testForwarding4
+--       , testForwarding5
+--       , testForwarding6
     ]
 
 testForwarding1 = TestCase $ assertEqual
