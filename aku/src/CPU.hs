@@ -83,27 +83,34 @@ initialCPU :: CPU
 initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialROB initialRSVs False initialEUs
 
 update :: CPU -> Writer Stats CPU
-update cpu = writer (cpu', Stats 1)
-  where
-    cpu' = if cpu^.halted
-           then cpu
-           else (issue.execute.dispatch.commit) cpu
+update cpu = if cpu^.halted then writer (cpu, emptyStats) else do
+    let cpu'    = commit cpu
+    cpu''       <- dispatch cpu'
+    let cpu'''  = execute cpu''
+    let cpu'''' = issue cpu'''
+    tell oneCycle
+    return cpu''''
 
-dispatch :: CPU -> CPU
+cycle :: CPU -> CPU
+cycle cpu = fst $ runWriter (update cpu)
+
+dispatch :: CPU -> Writer Stats CPU
 dispatch cpu = case M.safeGetInstruction (cpu^.program) (cpu^.pc) of
     Just insn ->
         case slots of
-            Nothing -> cpu
+            Nothing -> writer (cpu, emptyStats)
             Just (rsvId, robId) -> case rsvType of
                 QuickInt    -> dispatchNormal rsvId robId insn cpu
-                Branch      -> if cpu^.unresolvedBranch then cpu else dispatchNormal rsvId robId insn cpu & unresolvedBranch .~ True
+                Branch      -> if cpu^.unresolvedBranch
+                    then writer (cpu, emptyStats)
+                    else dispatchNormal rsvId robId insn cpu <&> unresolvedBranch .~ True
                 Address     -> dispatchNormal rsvId robId insn cpu
                 Load        -> dispatchNormal rsvId robId insn cpu
             where
                 op = insToOp insn
                 rsvType = opToRSVType op
                 slots = findEmptySlots rsvType (cpu^.rsv) (cpu^.rob)
-    Nothing -> cpu
+    Nothing -> writer (cpu, emptyStats)
 
 
 findEmptySlots :: RSVType -> RSVs -> ROB -> Maybe (RSVId, ROBId)
@@ -161,14 +168,15 @@ makeROBEntry cpu insn = result
             JALR d s1       -> ROBBranch (cpu^.pc) False Nothing (Just True)
             HALT            -> ROBHalt False
 
-dispatchNormal :: RSVId -> ROBId -> Instruction -> CPU -> CPU
-dispatchNormal rsvId robId insn cpu =
-    cpu & rsv %~ Map.adjust (const $ Just (rsvInsn, robId)) rsvId
-        & rob %~ enqueue robEntry
-        & rst %~ (case dest of
-            Nothing -> id
-            Just d  -> Map.adjust (const $ Just robId) d)
-        & pc %~ (+1)
+dispatchNormal :: RSVId -> ROBId -> Instruction -> CPU -> Writer Stats CPU
+dispatchNormal rsvId robId insn cpu = do
+    tell oneDispatch
+    return (cpu  & rsv %~ Map.adjust (const $ Just (rsvInsn, robId)) rsvId
+                & rob %~ enqueue robEntry
+                & rst %~ (case dest of
+                    Nothing -> id
+                    Just d  -> Map.adjust (const $ Just robId) d)
+                & pc %~ (+1))
     where dest = writesRegister insn
           rsvInsn = makeRSVInstruction cpu insn
           robEntry = makeROBEntry cpu insn
@@ -187,41 +195,43 @@ issueTo t cpu = if hasFreeEU t (cpu^.executionUnits) then cpu' else cpu
 
 -- given the contents of the ROB and an execution unit, if the EU is finished,
 -- compute the update to be published to the CDB and any changes to the ROB entry
-getEUResult :: CPU -> EU -> (ROBEntry, Maybe Word32)
-getEUResult cpu eu = if eu^.euStatus > 0
+getEUResult :: CPU -> (RSVType, EU) -> (ROBEntry, Maybe Word32)
+getEUResult cpu (t, eu) = if eu^.euStatus > 0
     then (robEntry, Nothing)
-    else case (eu^.euInstruction, robEntry) of
-    (ADD () s1 s2, ROBOperation d r)
+    else case (t, eu^.euInstruction, robEntry) of
+    (QuickInt, ADD () s1 s2, ROBOperation d r)
         -> (ROBOperation d (Just (s1 + s2)), Just (s1 + s2))
-    (ADDI () s (ImmS i), ROBOperation d r)
+    (QuickInt, ADDI () s (ImmS i), ROBOperation d r)
         -> (ROBOperation d (Just (s + fromIntegral i)), Just (s + fromIntegral i))
-    (MUL () s1 s2, ROBOperation d r)
+    (SlowInt, MUL () s1 s2, ROBOperation d r)
         -> (ROBOperation d (Just (s1 * s2)), Just (s1 * s2))
-    (NAND () s1 s2, ROBOperation d r)
+    (QuickInt, NAND () s1 s2, ROBOperation d r)
         -> (ROBOperation d (Just (complement (s1 .&. s2))), Just (complement (s1 .&. s2)))
-    (SW s1 s2 (ImmS i), ROBStore d r)
+    (Address, SW s1 s2 (ImmS i), ROBStore d r)
         -> (ROBStore (Just (fromIntegral s2 + fromIntegral i)) (Just s1), Nothing)
-    (LW () s (ImmS i), ROBLoad d Nothing Nothing)
+    (Address, LW () s (ImmS i), ROBLoad d Nothing Nothing)
         -> (ROBLoad d (Just (fromIntegral s + fromIntegral i)) Nothing, Nothing)
-    (LW () s (ImmS i), ROBLoad d (Just addr) Nothing)
+    (Address, LW () s (ImmS i), ROBLoad d (Just addr) Nothing)
+        -> (ROBLoad d (Just addr) Nothing, Nothing)
+    (Load, LW () s (ImmS i), ROBLoad d (Just addr) Nothing)
         -> (ROBLoad d (Just addr) (Just (M.getMemWord addr mem)), Just (M.getMemWord addr mem))
-    (BEQ s1 s2 (ImmS i), ROBBranch pc' pred Nothing Nothing)
+    (Branch, BEQ s1 s2 (ImmS i), ROBBranch pc' pred Nothing Nothing)
         -> (ROBBranch pc' pred (Just (pc' + 1 + fromIntegral i)) (Just (s1 == s2)), Nothing)
-    (BLT s1 s2 (ImmS i), ROBBranch pc' pred Nothing Nothing)
+    (Branch, BLT s1 s2 (ImmS i), ROBBranch pc' pred Nothing Nothing)
         -> (ROBBranch pc' pred (Just (pc' + 1 + fromIntegral i)) (Just (s1 < s2)), Nothing)
-    (JALR () s, ROBBranch pc' pred d r)
+    (Branch, JALR () s, ROBBranch pc' pred d r)
         -> (ROBBranch pc' pred (Just (fromIntegral s)) r, Nothing)
-    (HALT, ROBHalt _)
+    (Branch, HALT, ROBHalt _)
         -> (ROBHalt True, Nothing)
     where robEntry = getROBEntry (cpu^.rob) (eu^.euROBId)
           mem = cpu^.memory
 
 
 getEUResults :: CPU -> [(ROBId, ROBEntry, Maybe Word32)]
-getEUResults cpu = zipWith (\a (b,c) -> (a,b,c)) (map (^.euROBId) completableEUs) (map (getEUResult cpu) completableEUs)
+getEUResults cpu = zipWith (\a (b,c) -> (a,b,c)) (map ((^.euROBId) . snd) completableEUs) (map (getEUResult cpu) completableEUs)
     where completableEUs =
-            ( filter (\e -> e^.euStatus <= 0)
-            . concatMap snd
+            ( filter (\(t, e) -> e^.euStatus <= 0)
+            . concatMap (\(t,eus) -> map ((,) t) eus)
             . Map.toList
             . Map.map snd )
             (cpu^.executionUnits)

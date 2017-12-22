@@ -1,0 +1,44 @@
+name:                aku-benchmarks
+version:             0.1.0.0
+synopsis:            Benchmarks for the aku CPU simulator
+-- description:
+homepage:            https://github.com/rossng/aku#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Ross Gardiner
+maintainer:          ross-public@gmx.com
+copyright:           MIT
+category:            System
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Benchmarks
+  build-depends:       base >= 4.7 && < 5
+                     , vector
+                     , lens
+                     , mtl
+                     , monad-loops
+                     , megaparsec
+                     , aku
+                     , aku-assembler
+  default-language:    Haskell2010
+
+executable aku-benchmarks
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , aku
+                     , aku-assembler
+                     , aku-debugger
+                     , lens
+                     , mtl
+                     , monad-loops
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/rossng/aku
