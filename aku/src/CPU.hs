@@ -84,7 +84,7 @@ initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST 
 
 update :: CPU -> Writer Stats CPU
 update cpu = if cpu^.halted then writer (cpu, emptyStats) else do
-    let cpu'    = commit cpu
+    cpu'        <- commit cpu
     cpu''       <- dispatch cpu'
     let cpu'''  = execute cpu''
     let cpu'''' = issue cpu'''
@@ -161,7 +161,7 @@ makeROBEntry cpu insn = result
             ADDI d s1 i     -> ROBOperation d Nothing
             MUL d s1 s2     -> ROBOperation d Nothing
             NAND d s1 s2    -> ROBOperation d Nothing
-            SW s1 s2 i      -> ROBStore Nothing Nothing
+            SW s1 s2 i      -> ROBStore 10 Nothing Nothing
             LW d s1 i       -> ROBLoad d Nothing Nothing
             BEQ s1 s2 i     -> ROBBranch (cpu^.pc) False Nothing Nothing
             BLT s1 s2 i     -> ROBBranch (cpu^.pc) False Nothing Nothing
@@ -207,8 +207,8 @@ getEUResult cpu (t, eu) = if eu^.euStatus > 0
         -> (ROBOperation d (Just (s1 * s2)), Just (s1 * s2))
     (QuickInt, NAND () s1 s2, ROBOperation d r)
         -> (ROBOperation d (Just (complement (s1 .&. s2))), Just (complement (s1 .&. s2)))
-    (Address, SW s1 s2 (ImmS i), ROBStore d r)
-        -> (ROBStore (Just (fromIntegral s2 + fromIntegral i)) (Just s1), Nothing)
+    (Address, SW s1 s2 (ImmS i), ROBStore l d r)
+        -> (ROBStore l (Just (fromIntegral s2 + fromIntegral i)) (Just s1), Nothing)
     (Address, LW () s (ImmS i), ROBLoad d Nothing Nothing)
         -> (ROBLoad d (Just (fromIntegral s + fromIntegral i)) Nothing, Nothing)
     (Address, LW () s (ImmS i), ROBLoad d (Just addr) Nothing)
@@ -247,33 +247,40 @@ execute :: CPU -> CPU
 execute cpu = completeEUs $ cpu & executionUnits %~ stepEUs
 
 -- todo: correct offset for branches, speculative execution
-commitROBEntry :: ROBEntry -> CPU -> CPU
+commitROBEntry :: ROBEntry -> CPU -> Writer Stats CPU
 commitROBEntry robEntry cpu = case robEntry of
     ROBLoad (Dest dest) (Just _) (Just value)
-        -> cpu & registers %~ writeRegister dest value
+        -> return $
+           cpu & registers %~ writeRegister dest value
                & rst %~ Map.adjust (const Nothing) dest
-    ROBStore (Just addr) (Just value)
-        -> cpu & memory %~ M.setMemWord addr value
+    ROBStore 0 (Just addr) (Just value)
+        -> return $
+           cpu & memory %~ M.setMemWord addr value
     ROBOperation (Dest dest) (Just value)
-        -> cpu & registers %~ writeRegister dest value
+        -> return $
+           cpu & registers %~ writeRegister dest value
                & rst %~ Map.adjust (const Nothing) dest
     ROBBranch _ pred (Just addr) (Just taken)
         -> if pred == taken
-           then cpu & pc .~ (if taken then addr else cpu^.pc)
-                    & unresolvedBranch .~ False
-           else cpu & pc .~ (if taken then addr else cpu^.pc)
-                    & unresolvedBranch .~ False
-                    & rst .~ initialRST
-                    & rob .~ initialROB
-                    & rsv .~ initialRSVs
-                    & executionUnits .~ initialEUs
+           then do  tell oneBranch
+                    return $ cpu & pc .~ (if taken then addr else cpu^.pc)
+                                 & unresolvedBranch .~ False
+           else do tell oneMisprediction
+                   tell oneBranch
+                   return $ cpu & pc .~ (if taken then addr else cpu^.pc)
+                                & unresolvedBranch .~ False
+                                & rst .~ initialRST
+                                & rob .~ initialROB
+                                & rsv .~ initialRSVs
+                                & executionUnits .~ initialEUs
     ROBHalt True
-        -> cpu & halted .~ True
-    _   -> cpu
+        -> return $ cpu & halted .~ True
+    _   -> return cpu
 
-commit :: CPU -> CPU
-commit cpu = cpu'
+commit :: CPU -> Writer Stats CPU
+commit cpu = case robEntry of
+    Just entry  -> do
+        tell oneInstruction
+        commitROBEntry entry (cpu & rob .~ rob')
+    Nothing     -> return (cpu & rob .~ rob')
     where (rob', robEntry) = dequeue (cpu^.rob)
-          cpu' = case robEntry of
-                     Just entry  -> commitROBEntry entry (cpu & rob .~ rob')
-                     Nothing     -> cpu & rob .~ rob'

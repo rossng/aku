@@ -74,7 +74,7 @@ updateRSVInstruction robId operand rsvInsn = insn''
 
 readyForCommit :: ROBEntry -> Bool
 readyForCommit (ROBLoad _ (Just _) (Just _)) = True
-readyForCommit (ROBStore (Just _) (Just _)) = True
+readyForCommit (ROBStore 0 (Just _) (Just _)) = True
 readyForCommit (ROBOperation _ (Just _)) = True
 readyForCommit (ROBBranch _ _ (Just _) (Just _)) = True
 readyForCommit (ROBHalt ready) = ready
@@ -84,7 +84,7 @@ type ROBId = Int
 
 data ROBEntry =
       ROBLoad I.DestRegister (Maybe Int) (Maybe Word32)
-    | ROBStore (Maybe Int) (Maybe Word32)
+    | ROBStore Int (Maybe Int) (Maybe Word32)
     | ROBOperation I.DestRegister (Maybe Word32)
     | ROBBranch Int Bool (Maybe Int) (Maybe Bool)
     | ROBHalt Bool
@@ -94,6 +94,10 @@ isROBStore :: ROBEntry -> Bool
 isROBStore e = case e of
     ROBStore{}  -> True
     _           -> False
+
+decrementROBStore :: ROBEntry -> ROBEntry
+decrementROBStore (ROBStore n (Just addr) (Just value)) = ROBStore (n-1) (Just addr) (Just value)
+decrementROBStore insn = insn
 
 data ROB = ROB {
       _robFilled :: [(ROBId, ROBEntry)]
@@ -118,11 +122,11 @@ enqueue entry rob = case rob^.robEmpty of
 
 dequeue :: ROB -> (ROB, Maybe ROBEntry)
 dequeue rob = case rob^.robFilled of
-    []  -> (rob, Nothing)
-    s:_ -> if readyForCommit (snd s)
-           then (rob & robFilled %~ tail
-                     & robEmpty  %~ (++ [fst s]), Just $ snd s)
-           else (rob, Nothing)
+    []      -> (rob, Nothing)
+    s:ss    -> if readyForCommit (snd s)
+                then (rob & robFilled %~ tail
+                          & robEmpty  %~ (++ [fst s]), Just $ snd s)
+                else (rob & robFilled .~ ((fst s, decrementROBStore (snd s)) : ss), Nothing)
 
 getROBEntry :: ROB -> ROBId -> ROBEntry
 getROBEntry rob robId = snd $ head $ filter (\(i,_) -> i == robId) (rob^.robFilled)
@@ -140,8 +144,8 @@ pendingStoresWithAddress :: Int -> ROBId -> ROB -> Bool
 pendingStoresWithAddress addr robId rob = any (\(i,e) -> storeToAddr addr e) (entriesBeforeRobId robId rob)
     where storeToAddr :: Int -> ROBEntry -> Bool
           storeToAddr addr e = case e of
-            ROBStore (Just a) _ -> a == addr
-            _                   -> False
+            ROBStore _ (Just a) _   -> a == addr
+            _                       -> False
 
 rsvClashesPendingStores :: (RSVInstruction, ROBId) -> ROB -> Bool
 rsvClashesPendingStores (rsvInsn, robId) rob = case rsvInsn of
