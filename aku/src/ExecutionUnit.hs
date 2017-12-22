@@ -58,7 +58,12 @@ hasFreeEU t eus = fst eusOfType > length (snd eusOfType)
 
 makeEU :: (EUInstruction, ROBId) -> EU
 makeEU (insn, robId) = EU latency insn robId
-    where latency = 2
+    where latency = case opToRSVType (insToOp insn) of
+                        Load      -> 10
+                        Address   -> 1
+                        QuickInt  -> 1
+                        SlowInt   -> 4
+                        Branch    -> 1
 
 pushEU :: RSVType -> (EUInstruction, ROBId) -> EUs -> EUs
 pushEU t contents eus = if hasFreeEU t eus then

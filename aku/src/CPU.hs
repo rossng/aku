@@ -89,17 +89,6 @@ update cpu = writer (cpu', Stats 1)
            then cpu
            else (issue.execute.dispatch.commit) cpu
 
-opToRSVType :: Opcode -> RSVType
-opToRSVType OPADD = QuickInt
-opToRSVType OPADDI = QuickInt
-opToRSVType OPNAND = QuickInt
-opToRSVType OPSW = Address
-opToRSVType OPLW = Address
-opToRSVType OPBEQ = Branch
-opToRSVType OPBLT = Branch
-opToRSVType OPJALR = Branch
-opToRSVType OPHALT = Branch
-
 dispatch :: CPU -> CPU
 dispatch cpu = case M.safeGetInstruction (cpu^.program) (cpu^.pc) of
     Just insn ->
@@ -136,6 +125,7 @@ makeRSVInstruction cpu insn = res
         res = case insn of
             ADD d s1 s2     -> ADD () s1' s2'
             ADDI d s1 i     -> ADDI () s1' i
+            MUL d s1 s2     -> MUL () s1' s2'
             NAND d s1 s2    -> NAND () s1' s2'
             SW s1 s2 i      -> SW s1' s2' i
             LW d s1 i       -> LW () s1' i
@@ -162,6 +152,7 @@ makeROBEntry cpu insn = result
         result = case insn of
             ADD d s1 s2     -> ROBOperation d Nothing
             ADDI d s1 i     -> ROBOperation d Nothing
+            MUL d s1 s2     -> ROBOperation d Nothing
             NAND d s1 s2    -> ROBOperation d Nothing
             SW s1 s2 i      -> ROBStore Nothing Nothing
             LW d s1 i       -> ROBLoad d Nothing Nothing
@@ -204,6 +195,8 @@ getEUResult cpu eu = if eu^.euStatus > 0
         -> (ROBOperation d (Just (s1 + s2)), Just (s1 + s2))
     (ADDI () s (ImmS i), ROBOperation d r)
         -> (ROBOperation d (Just (s + fromIntegral i)), Just (s + fromIntegral i))
+    (MUL () s1 s2, ROBOperation d r)
+        -> (ROBOperation d (Just (s1 * s2)), Just (s1 * s2))
     (NAND () s1 s2, ROBOperation d r)
         -> (ROBOperation d (Just (complement (s1 .&. s2))), Just (complement (s1 .&. s2)))
     (SW s1 s2 (ImmS i), ROBStore d r)

@@ -14,7 +14,10 @@ import qualified Memory as M
 
 testSingleInstruction = TestList [
       testADD
+    , testADDNeg
     , testADDI
+    , testMUL
+    , testMULNeg
     , testNAND
     , testSW
     , testLW
@@ -34,12 +37,39 @@ testADD = TestCase $ assertEqual
                                 & (registers.x3) .~ 3
               regs = executeProgramUntilHalt init prog ^. _1 . registers
 
+testADDNeg = TestCase $ assertEqual
+            "ADD X1 X2 X3"
+            4
+            (readRegister regs X1)
+        where prog = M.Program [ADD (Dest X1) (Source X2) (Source X3), HALT]
+              init = initialCPU & (registers.x2) .~ 7
+                                & (registers.x3) .~ (-3)
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
+
 testADDI = TestCase $ assertEqual
             "ADDI X1 X1 5"
             5
             (readRegister regs X1)
            where prog = M.Program [ADDI (Dest X1) (Source X1) (ImmS 5), HALT]
                  regs = executeProgramUntilHalt initialCPU prog ^. _1 . registers
+
+testMUL = TestCase $ assertEqual
+            "MUL X1 X2 X3"
+            30
+            (readRegister regs X1)
+        where prog = M.Program [ADD (Dest X1) (Source X2) (Source X3), HALT]
+              init = initialCPU & (registers.x2) .~ 5
+                                & (registers.x3) .~ 6
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
+
+testMULNeg = TestCase $ assertEqual
+            "MUL X1 X2 X3"
+            (-8)
+            (readRegister regs X1)
+        where prog = M.Program [ADD (Dest X1) (Source X2) (Source X3), HALT]
+              init = initialCPU & (registers.x2) .~ (-2)
+                                & (registers.x3) .~ 4
+              regs = executeProgramUntilHalt init prog ^. _1 . registers
 
 testNAND = TestCase $ assertEqual
             "NAND X1 X2 X3"

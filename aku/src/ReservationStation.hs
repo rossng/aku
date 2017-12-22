@@ -30,6 +30,18 @@ rsvIdHasType rsvType (RSVId t _) = t == rsvType
 makeRSVs :: RSVType -> Int -> RSVs
 makeRSVs t n = Map.fromList $ map (\i -> (RSVId t i, Nothing)) [1..n]
 
+opToRSVType :: Opcode -> RSVType
+opToRSVType I.OPADD = QuickInt
+opToRSVType I.OPADDI = QuickInt
+opToRSVType I.OPMUL = SlowInt
+opToRSVType I.OPNAND = QuickInt
+opToRSVType I.OPSW = Address
+opToRSVType I.OPLW = Address
+opToRSVType I.OPBEQ = Branch
+opToRSVType I.OPBLT = Branch
+opToRSVType I.OPJALR = Branch
+opToRSVType I.OPHALT = Branch
+
 readyForDispatch :: RSVInstruction -> Bool
 readyForDispatch (I.ADD _ (RSOperand _) (RSOperand _)) = True
 readyForDispatch (I.ADDI _ (RSOperand _) _) = True
