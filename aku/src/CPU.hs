@@ -72,10 +72,12 @@ instance Show CPU where
                show (cpu^.memory) ++ "\n" ++
                show (cpu^.registers) ++ "\n" ++
                (if cpu^.halted then "HALTED" else "ACTIVE") ++ "\n" ++
-               show (cpu^.pc) ++ "\n" ++
-               show (cpu^.rst) ++ "\n" ++
-               show (cpu^.rob) ++ "\n" ++
-               show (cpu^.rsv)
+               (if cpu^.unresolvedBranch then "UNRESOLVED" else "RESOLVED") ++ "\n" ++
+               "PC:     " ++ show (cpu^.pc) ++ "\n" ++
+               "RST:    " ++ show (cpu^.rst) ++ "\n" ++
+               "ROB:    " ++ show (cpu^.rob) ++ "\n" ++
+               "RSVs:   " ++ show (cpu^.rsv) ++ "\n" ++
+               "EUs:    " ++ show (cpu^.executionUnits)
 
 initialCPU :: CPU
 initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST initialReorderBuffer initialRSVs False initialEUs
@@ -83,7 +85,10 @@ initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST 
 update :: CPU -> Writer Stats CPU
 update cpu = writer (cpu', Stats 1)
   where
-    cpu' = if cpu^.halted then cpu else cpu
+    cpu' = if cpu^.halted
+           then cpu
+--            else (dispatch . issue . execute . commit) cpu
+           else (commit . execute . issue . dispatch) cpu
 
 opToRSVType :: Opcode -> RSVType
 opToRSVType OPADD = QuickInt
@@ -161,9 +166,9 @@ makeROBEntry cpu insn = result
             NAND d s1 s2    -> ROBOperation d Nothing
             SW s1 s2 i      -> ROBStore Nothing Nothing
             LW d s1 i       -> ROBLoad d Nothing Nothing
-            BEQ s1 s2 i     -> ROBBranch Nothing Nothing
-            BLT s1 s2 i     -> ROBBranch Nothing Nothing
-            JALR d s1       -> ROBBranch Nothing (Just True)
+            BEQ s1 s2 i     -> ROBBranch (cpu^.pc) Nothing Nothing
+            BLT s1 s2 i     -> ROBBranch (cpu^.pc) Nothing Nothing
+            JALR d s1       -> ROBBranch (cpu^.pc) Nothing (Just True)
             HALT            -> ROBHalt
 
 dispatchNormal :: RSVId -> ROBId -> Instruction -> CPU -> CPU
@@ -200,20 +205,22 @@ getEUResult cpu eu = if eu^.euStatus > 0
         -> (ROBOperation d (Just (s1 + s2)), Just (s1 + s2))
     (ADDI () s (ImmS i), ROBOperation d r)
         -> (ROBOperation d (Just (s + fromIntegral i)), Just (s + fromIntegral i))
-    (NAND () s1 s2, _)
-        -> undefined
+    (NAND () s1 s2, ROBOperation d r)
+        -> (ROBOperation d (Just (complement (s1 .&. s2))), Just (complement (s1 .&. s2)))
     (SW s1 s2 (ImmS i), ROBStore d r)
         -> (ROBStore (Just (fromIntegral s2 + fromIntegral i)) (Just s1), Nothing)
     (LW () s (ImmS i), ROBLoad d Nothing Nothing)
         -> (ROBLoad d (Just (fromIntegral s + fromIntegral i)) Nothing, Nothing)
     (LW () s (ImmS i), ROBLoad d (Just addr) Nothing)
-        -> (ROBLoad d (Just addr) (Just (M.getMemWord mem addr)), Just (M.getMemWord mem addr))
-    (BEQ s1 s2 (ImmS i), ROBBranch Nothing Nothing)
-        -> (ROBBranch (Just (fromIntegral i)) (Just (s1 == s2)), Nothing)
-    (BLT s1 s2 (ImmS i), ROBBranch Nothing Nothing)
-        -> (ROBBranch (Just (fromIntegral i)) (Just (s1 < s2)), Nothing)
-    (JALR () s, ROBBranch d r)
-        -> (ROBBranch (Just (fromIntegral s)) r, Nothing)
+        -> (ROBLoad d (Just addr) (Just (M.getMemWord addr mem)), Just (M.getMemWord addr mem))
+    (BEQ s1 s2 (ImmS i), ROBBranch p Nothing Nothing)
+        -> (ROBBranch p (Just (p + 1 + fromIntegral i)) (Just (s1 == s2)), Nothing)
+    (BLT s1 s2 (ImmS i), ROBBranch p Nothing Nothing)
+        -> (ROBBranch p (Just (p + 1 + fromIntegral i)) (Just (s1 < s2)), Nothing)
+    (JALR () s, ROBBranch p d r)
+        -> (ROBBranch p (Just (fromIntegral s)) r, Nothing)
+    (HALT, ROBHalt)
+        -> (ROBHalt, Nothing)
     where robEntry = getROBEntry (cpu^.rob) (eu^.euROBId)
           mem = cpu^.memory
 
@@ -221,10 +228,11 @@ getEUResult cpu eu = if eu^.euStatus > 0
 getEUResults :: CPU -> [(ROBId, ROBEntry, Maybe Word32)]
 getEUResults cpu = zipWith (\a (b,c) -> (a,b,c)) (map (^.euROBId) completableEUs) (map (getEUResult cpu) completableEUs)
     where completableEUs =
-              filter (\e -> e^.euStatus == 0)
-            $ concatMap snd
-            $ Map.toList
-            $ Map.map snd (cpu^.executionUnits)
+            ( filter (\e -> e^.euStatus <= 0)
+            . concatMap snd
+            . Map.toList
+            . Map.map snd )
+            (cpu^.executionUnits)
 
 completeEUs :: CPU -> CPU
 completeEUs cpu = cpu   & rob .~ foldr (\(robId, robEntry, _) r -> updateROBEntry robId robEntry r) (cpu^.rob) euResults
@@ -236,5 +244,27 @@ completeEUs cpu = cpu   & rob .~ foldr (\(robId, robEntry, _) r -> updateROBEntr
 execute :: CPU -> CPU
 execute cpu = completeEUs $ cpu & executionUnits %~ stepEUs
 
+-- todo: correct offset for branches, speculative execution
+commitROBEntry :: ROBEntry -> CPU -> CPU
+commitROBEntry robEntry cpu = case robEntry of
+    ROBLoad (Dest dest) (Just _) (Just value)
+        -> cpu & registers %~ writeRegister dest value
+               & rst %~ Map.adjust (const Nothing) dest
+    ROBStore (Just addr) (Just value)
+        -> cpu & memory %~ M.setMemWord addr value
+    ROBOperation (Dest dest) (Just value)
+        -> cpu & registers %~ writeRegister dest value
+               & rst %~ Map.adjust (const Nothing) dest
+    ROBBranch _ (Just addr) (Just taken)
+        -> cpu & pc .~ (if taken then addr else cpu^.pc)
+               & unresolvedBranch .~ False
+    ROBHalt
+        -> cpu & halted .~ True
+    _   -> cpu
+
 commit :: CPU -> CPU
-commit cpu = undefined
+commit cpu = cpu' & rob .~ rob'
+    where (rob', robEntry) = dequeue (cpu^.rob)
+          cpu' = case robEntry of
+                     Just entry  -> commitROBEntry entry cpu
+                     Nothing     -> cpu

@@ -53,7 +53,7 @@ popRSV t rsvs rob = case readyRsvs of
             . Map.mapMaybe id) rsvs
 
 hasFreeEU :: RSVType -> EUs -> Bool
-hasFreeEU t eus = fst eusOfType < length (snd eusOfType)
+hasFreeEU t eus = fst eusOfType > length (snd eusOfType)
     where eusOfType = eus Map.! t
 
 makeEU :: (EUInstruction, ROBId) -> EU
@@ -73,9 +73,26 @@ stepEUs = Map.map (second stepEUGroup)
     where stepEUGroup :: [EU] -> [EU]
           stepEUGroup = map stepEU
 
-emptyGroupEUs :: (Int, [EU]) -> (Int, [EU])
-emptyGroupEUs (max, eus) = (max, eus')
+emptyEUs :: (Int, [EU]) -> (Int, [EU])
+emptyEUs (max, eus) = (max, eus')
     where eus' = filter (\eu -> eu^.euStatus > 0) eus
 
+dropUpTo :: Int -> (a -> Bool) -> [a] -> [a]
+dropUpTo n p [] = []
+dropUpTo 0 p xs = xs
+dropUpTo n p (x:xs) = if p x then xs else x:xs
+
+emptyAddressEUs :: Int -> (Int, [EU]) -> (Int, [EU])
+emptyAddressEUs n (max, eus) = (max, eus'')
+    where eus' = dropUpTo n (\eu -> eu^.euStatus <= 0 && insToOp (eu^.euInstruction) == OPLW) eus
+          eus'' = filter (\eu -> eu^.euStatus > 0 || insToOp (eu^.euInstruction) == OPLW) eus'
+
 emptyCompleteEUs :: EUs -> EUs
-emptyCompleteEUs = Map.map emptyGroupEUs
+emptyCompleteEUs eus = refilled
+    where loadEUs = eus Map.! Load
+          freeBranchEUs = fst loadEUs - length (snd loadEUs)
+          emptied = Map.mapWithKey (\k a -> if k == Address then emptyAddressEUs freeBranchEUs a else emptyEUs a) eus
+          addressEUs = eus Map.! Address
+          completedAddressEUs = map (\eu -> (eu^.euInstruction, eu^.euROBId)) $ filter (\eu -> eu^.euStatus <= 0) (snd addressEUs)
+          progressableAddressEUs = take freeBranchEUs (filter (\(ins, _) -> insToOp ins == OPLW) completedAddressEUs)
+          refilled = foldr (pushEU Load) emptied progressableAddressEUs

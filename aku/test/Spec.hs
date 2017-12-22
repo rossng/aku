@@ -17,5 +17,6 @@ main :: IO Counts
 main = runTestTT tests
 
 tests = TestList [
-          TestLabel "Test single instruction" testSingleInstruction,
-          TestLabel "Test forwarding" testForwarding]
+          TestLabel "Test single instruction" testSingleInstruction
+        , TestLabel "Test forwarding" testForwarding
+        ]

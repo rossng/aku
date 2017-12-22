@@ -53,7 +53,7 @@ testNAND = TestCase $ assertEqual
 testSW = TestCase $ assertEqual
             "SW X1 X2 2"
             15
-            (M.getMemWord mem 2)
+            (M.getMemWord 2 mem)
            where prog = M.Program [SW (Source X1) (Source X2) (ImmS (-1)), HALT]
                  init = initialCPU & (registers.x2) .~ 3
                                    & (registers.x1) .~ 15
@@ -65,7 +65,7 @@ testLW = TestCase $ assertEqual
             (readRegister regs X1)
            where prog = M.Program [LW (Dest X1) (Source X2) (ImmS 5), HALT]
                  init = initialCPU & (registers.x2) .~ 4
-                                   & memory .~ M.setMemWord (initialCPU^.memory) 9 25
+                                   & memory %~ M.setMemWord 9 25
                  regs = executeProgramUntilHalt init prog ^. _1 . registers
 
 testBEQTaken = TestCase $ assertEqual
@@ -109,14 +109,10 @@ testBLTSkipped = TestCase $ assertEqual
 
 testJALR = TestList [
             TestCase $ assertEqual
-                "JALR X1 X2: PC"
-                13
-                (result^.begif.begifPc),
-            TestCase $ assertEqual
-                "JALR X1 X2: X1"
-                1
-                (readRegister (result^.registers) X1)
+                "JALR X1 X2 (2), ADDI X3 X0 1, HALT"
+                0
+                (readRegister (result^.registers) X3)
            ]
-           where prog = M.Program [JALR (Dest X1) (Source X2)]
-                 init = initialCPU & (registers.x2) .~ 10
+           where prog = M.Program [JALR (Dest X1) (Source X2), ADDI (Dest X3) (Source X0) (ImmS 1), HALT]
+                 init = initialCPU & (registers.x2) .~ 2
                  (result, _) = executeProgramToStep init prog 6

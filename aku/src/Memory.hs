@@ -27,17 +27,17 @@ emptyProgram = Program []
 getInstruction :: Program -> Int -> Instruction
 getInstruction (Program p) i = p V.! i
 
-getMemWord :: Memory -> Int -> Word32
-getMemWord (Memory mem) addr = fromMaybe (0 :: Word32) $ mem V.!? addr
+getMemWord :: Int -> Memory -> Word32
+getMemWord addr (Memory mem) = fromMaybe (0 :: Word32) $ mem V.!? addr
 
-getMemWords :: Memory -> Int -> Int -> V.Vector Word32
-getMemWords (Memory mem) addr len = V.slice addr len mem
+getMemWords :: Int -> Int -> Memory -> V.Vector Word32
+getMemWords addr len (Memory mem) = V.slice addr len mem
 
-setMemWord :: Memory -> Word32 -> Word32 -> Memory
-setMemWord (Memory mem) addr val = Memory (mem V.// [(fromIntegral addr, val)])
+setMemWord :: Int -> Word32 -> Memory -> Memory
+setMemWord addr val (Memory mem) = Memory (mem V.// [(addr, val)])
 
-setMemWords :: Memory -> Int -> [Int32] -> Memory
-setMemWords (Memory mem) addr vals = Memory (mem V.// updates)
+setMemWords :: Int -> [Int32] -> Memory -> Memory
+setMemWords addr vals (Memory mem) = Memory (mem V.// updates)
     where addrs = map (+ addr) [0..(length vals - 1)]
           wordVals = map fromIntegral vals
           updates = zip addrs wordVals

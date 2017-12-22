@@ -47,8 +47,8 @@ readRegister registers register = case register of
 emptyRegisters :: Registers
 emptyRegisters = Registers 0 0 0 0 0 0 0 0
 
-writeRegister :: Registers -> RegisterName -> Word32 -> Registers
-writeRegister registers register value = case register of
+writeRegister :: RegisterName -> Word32 -> Registers -> Registers
+writeRegister register value registers = case register of
     X0 -> registers
     X1 -> registers & x1 .~ value
     X2 -> registers & x2 .~ value

@@ -46,11 +46,10 @@ applyCommand command cpu = case command of
                                 Nothing -> putStrLn "Failed to load program" >> return cpu
         Step            -> return $ extractWriter (update cpu) -- TODO: keep logs
         StepN n         -> return $ extractWriter $ repeatFunction n update cpu
-        SetMemory a vs  -> return $ cpu & memory .~ M.setMemWords (cpu^.memory) a vs
-        SetRegister r v -> return $ cpu & registers .~ R.writeRegister (cpu^.registers) r v
+        SetMemory a vs  -> return $ cpu & memory %~ M.setMemWords a vs
+        SetRegister r v -> return $ cpu & registers %~ R.writeRegister r v
         Continue        -> return $ fst $ executeUntilHalt cpu
-        --ShowStall       -> print (stall cpu) >> return cpu
-        --ShowStomp       -> print (stomp cpu) >> return cpu
+        Goto n          -> return $ cpu & pc .~ n
         Quit            -> return cpu
 
 extractWriter :: Writer w a -> a

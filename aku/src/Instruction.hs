@@ -50,7 +50,7 @@ getImmediate (BLT _ _ (ImmS imm)) = fromIntegral imm
 getImmediate (JALR _ _) = 0
 getImmediate HALT = 0
 
-insToOp :: Instruction -> Opcode
+insToOp :: BaseInstruction d s u i -> Opcode
 insToOp ADD{} = OPADD
 insToOp ADDI{} = OPADDI
 insToOp NAND{} = OPNAND

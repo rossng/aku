@@ -20,8 +20,8 @@ data Command =  Reset -- resets the CPU to initialCPU
               | SetMemory Int [Int32] -- set a contiguous series of values in memory
               | SetRegister RegisterName Word32 -- set a register to a value
               | Continue -- continue until halt
-              | ShowStall -- show the output of the stall logic
-              | ShowStomp -- show the output of the stall logic
+              | Goto Int -- goto the specified instruction
+
               | Quit  -- quit the debugger
               deriving (Eq, Show)
 
@@ -100,11 +100,8 @@ continueParser :: Parser Command
 continueParser =     Continue <$ try (rword "continue")
                  <|> Continue <$ try (rword "c")
 
-stallParser :: Parser Command
-stallParser = ShowStall <$ try (rword "stall")
-
-stompParser :: Parser Command
-stompParser = ShowStomp <$ try (rword "stomp")
+gotoParser :: Parser Command
+gotoParser = Goto <$ try (rword "goto") <*> integer
 
 commandParser :: Parser Command
 commandParser = (    resetParser
@@ -115,8 +112,7 @@ commandParser = (    resetParser
                 <||> setMemParser
                 <||> setRegParser
                 <||> continueParser
-                <||> stallParser
-                <||> stompParser
+                <||> gotoParser
                 ) <* eof
 
 parseCommand :: String -> Maybe Command

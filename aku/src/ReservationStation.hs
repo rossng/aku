@@ -54,17 +54,17 @@ updateRSVInstruction robId operand rsvInsn = insn''
                         then updateSource1 (RSOperand operand) rsvInsn
                         else rsvInsn
                       _                 -> rsvInsn
-          insn'' = case source2 rsvInsn of
+          insn'' = case source2 insn' of
                       Just (RSROB r)    -> if r == robId
-                        then updateSource2 (RSOperand operand) rsvInsn
-                        else rsvInsn
-                      _                 -> rsvInsn
+                        then updateSource2 (RSOperand operand) insn'
+                        else insn'
+                      _                 -> insn'
 
 readyForCommit :: ROBEntry -> Bool
 readyForCommit (ROBLoad _ (Just _) (Just _)) = True
 readyForCommit (ROBStore (Just _) (Just _)) = True
 readyForCommit (ROBOperation _ (Just _)) = True
-readyForCommit (ROBBranch (Just _) (Just _)) = True
+readyForCommit (ROBBranch _ (Just _) (Just _)) = True
 readyForCommit ROBHalt = True
 readyForCommit _ = False
 
@@ -74,7 +74,7 @@ data ROBEntry =
       ROBLoad I.DestRegister (Maybe Int) (Maybe Word32)
     | ROBStore (Maybe Int) (Maybe Word32)
     | ROBOperation I.DestRegister (Maybe Word32)
-    | ROBBranch (Maybe Int) (Maybe Bool)
+    | ROBBranch Int (Maybe Int) (Maybe Bool)
     | ROBHalt
     deriving (Show, Eq)
 
@@ -107,8 +107,10 @@ enqueue entry rob = case rob^.robEmpty of
 dequeue :: ROB -> (ROB, Maybe ROBEntry)
 dequeue rob = case rob^.robFilled of
     []  -> (rob, Nothing)
-    s:_ -> (rob & robFilled     %~ tail
-                & robEmpty      %~ (++ [fst s]), Just $ snd s)
+    s:_ -> if readyForCommit (snd s)
+           then (rob & robFilled %~ tail
+                     & robEmpty  %~ (++ [fst s]), Just $ snd s)
+           else (rob, Nothing)
 
 getROBEntry :: ROB -> ROBId -> ROBEntry
 getROBEntry rob robId = snd $ head $ filter (\(i,_) -> i == robId) (rob^.robFilled)
@@ -120,7 +122,7 @@ updateROBEntry robId robEntry rob = rob & robFilled %~ map fn
             else (i, entry)
 
 entriesBeforeRobId :: ROBId -> ROB -> [(ROBId, ROBEntry)]
-entriesBeforeRobId robId rob = takeWhile (\(i, _) -> i < robId) (rob^.robFilled)
+entriesBeforeRobId robId rob = takeWhile (\(i, _) -> i /= robId) (rob^.robFilled)
 
 pendingStoresWithAddress :: Int -> ROBId -> ROB -> Bool
 pendingStoresWithAddress addr robId rob = any (\(i,e) -> storeToAddr addr e) (entriesBeforeRobId robId rob)
@@ -134,3 +136,4 @@ rsvClashesPendingStores (rsvInsn, robId) rob = case rsvInsn of
     I.LW _ (RSOperand a) (ImmS o) -> pendingStoresWithAddress (fromIntegral a + fromIntegral o) robId rob
     I.LW{}                        -> True
     _                             -> False
+

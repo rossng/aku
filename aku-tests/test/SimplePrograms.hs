@@ -57,8 +57,8 @@ testSkipInstruction prog = assertEqual "skip_instruction.asm"
 testBubbleSort :: [Int32] -> M.Program -> Assertion
 testBubbleSort list prog = assertEqual "bubble_sort.asm"
             (fromList (sort list))
-            (V.map fromIntegral $ M.getMemWords mem 0 (L.length list))
-        where init = initialCPU & memory .~ M.setMemWords M.emptyMemory 0 list
+            (V.map fromIntegral $ M.getMemWords 0 (L.length list) mem)
+        where init = initialCPU & memory .~ M.setMemWords 0 list M.emptyMemory
                                 & (registers.x1) .~ fromIntegral (L.length list)
               mem = executeProgramUntilHalt init prog ^. _1 . memory
 
