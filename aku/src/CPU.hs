@@ -39,18 +39,21 @@ initialROB = ROB {
     } where size = 16
 
 initialRSVs :: RSVs
-initialRSVs = makeRSVs QuickInt 2
-    `Map.union` makeRSVs SlowInt 2
-    `Map.union` makeRSVs Branch 1
-    `Map.union` makeRSVs Address 2
-    `Map.union` makeRSVs Load 2
+initialRSVs = makeRSVs QuickInt 10
+    `Map.union` makeRSVs SlowInt 10
+    `Map.union` makeRSVs Branch 10
+    `Map.union` makeRSVs Address 10
+    `Map.union` makeRSVs Load 10
 
 initialEUs :: EUs
-initialEUs =    makeEUs QuickInt 1
-    `Map.union` makeEUs SlowInt 1
-    `Map.union` makeEUs Branch 1
-    `Map.union` makeEUs Address 1
-    `Map.union` makeEUs Load 1
+initialEUs =    makeEUs QuickInt 10
+    `Map.union` makeEUs SlowInt 10
+    `Map.union` makeEUs Branch 10
+    `Map.union` makeEUs Address 10
+    `Map.union` makeEUs Load 10
+
+storeLatency :: Int
+storeLatency = 10
 
 data CPU = CPU {
       _program :: M.Program
@@ -161,7 +164,7 @@ makeROBEntry cpu insn = result
             ADDI d s1 i     -> ROBOperation d Nothing
             MUL d s1 s2     -> ROBOperation d Nothing
             NAND d s1 s2    -> ROBOperation d Nothing
-            SW s1 s2 i      -> ROBStore 10 Nothing Nothing
+            SW s1 s2 i      -> ROBStore storeLatency Nothing Nothing
             LW d s1 i       -> ROBLoad d Nothing Nothing
             BEQ s1 s2 i     -> ROBBranch (cpu^.pc) False Nothing Nothing
             BLT s1 s2 i     -> ROBBranch (cpu^.pc) False Nothing Nothing

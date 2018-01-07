@@ -17,7 +17,7 @@ main = do
     maybeProg <- loadProgram "aku-benchmarks/programs/bubble_sort.asm"
     case maybeProg of
         Just prog   -> do
-            let (cpu, stats) = benchmarkWithMemory [10,9,8,7,6,5,4,3,2,1] prog
+            let (cpu, stats) = benchmarkWithMemory (reverse [1..100]) prog
             print stats
             print cpu
         Nothing     -> putStrLn "Could not load program"
