@@ -28,6 +28,7 @@ toEUInstruction :: RSVInstruction -> Maybe EUInstruction
 toEUInstruction (I.ADD _ (RSOperand s1) (RSOperand s2)) = Just $ I.ADD () s1 s2
 toEUInstruction (I.ADDI _ (RSOperand s) i) = Just $ I.ADDI () s i
 toEUInstruction (I.NAND _ (RSOperand s1) (RSOperand s2)) = Just $ I.NAND () s1 s2
+toEUInstruction (I.MUL _ (RSOperand s1) (RSOperand s2)) = Just $ I.MUL () s1 s2
 toEUInstruction (I.SW (RSOperand s1) (RSOperand s2) i) = Just $ I.SW s1 s2 i
 toEUInstruction (I.LW _ (RSOperand s) i) = Just $ I.LW () s i
 toEUInstruction (I.BEQ (RSOperand s1) (RSOperand s2) i) = Just $ I.BEQ s1 s2 i

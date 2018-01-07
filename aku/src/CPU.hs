@@ -114,6 +114,7 @@ dispatch cpu = case M.safeGetInstruction (cpu^.program) (cpu^.pc) of
             Nothing -> writer (cpu, emptyStats)
             Just (rsvId, robId) -> case rsvType of
                 QuickInt    -> dispatchNormal rsvId robId insn cpu
+                SlowInt     -> dispatchNormal rsvId robId insn cpu
                 Branch      -> if cpu^.unresolvedBranch
                     then writer (cpu, emptyStats)
                     else dispatchNormal rsvId robId insn cpu <&> unresolvedBranch .~ True
@@ -158,13 +159,17 @@ makeRSVInstruction cpu insn = res
             Nothing -> RSNoRegister
             Just rs -> case (cpu^.rst) Map.! rs of
                 Nothing -> RSOperand $ readRegister (cpu^.registers) rs
-                Just i  -> RSROB i
+                Just i  -> case getROBResult (cpu^.rob) i of
+                  Just r  -> RSOperand r
+                  Nothing -> RSROB i
         s2' = case sourceReg2 insn of
             -- if the RST does not have an entry for rs, get register value directly
             Nothing -> RSNoRegister
             Just rs -> case (cpu^.rst) Map.! rs of
                 Nothing -> RSOperand $ readRegister (cpu^.registers) rs
-                Just i  -> RSROB i
+                Just i  -> case getROBResult (cpu^.rob) i of
+                  Just r  -> RSOperand r
+                  Nothing -> RSROB i
 
 makeROBEntry :: CPU -> Instruction -> ROBEntry
 makeROBEntry cpu insn = result

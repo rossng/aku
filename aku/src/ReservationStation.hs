@@ -46,6 +46,7 @@ readyForDispatch :: RSVInstruction -> Bool
 readyForDispatch (I.ADD _ (RSOperand _) (RSOperand _)) = True
 readyForDispatch (I.ADDI _ (RSOperand _) _) = True
 readyForDispatch (I.NAND _ (RSOperand _) (RSOperand _)) = True
+readyForDispatch (I.MUL _ (RSOperand _) (RSOperand _)) = True
 readyForDispatch (I.SW (RSOperand _) (RSOperand _) _) = True
 readyForDispatch (I.LW _ (RSOperand _) _) = True
 readyForDispatch (I.BEQ (RSOperand _) (RSOperand _) _) = True
@@ -136,6 +137,12 @@ updateROBEntry robId robEntry rob = rob & robFilled %~ map fn
     where fn (i, entry) = if i == robId
             then (i, robEntry)
             else (i, entry)
+
+getROBResult :: ROB -> ROBId -> Maybe Word32
+getROBResult rob robId = case getROBEntry rob robId of
+  (ROBLoad _ (Just _) (Just r)) -> Just r
+  (ROBOperation _ (Just r))     -> Just r
+  _                             -> Nothing
 
 entriesBeforeRobId :: ROBId -> ROB -> [(ROBId, ROBEntry)]
 entriesBeforeRobId robId rob = takeWhile (\(i, _) -> i /= robId) (rob^.robFilled)

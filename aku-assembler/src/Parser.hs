@@ -19,6 +19,7 @@ data Statement =
       ADD I.DestRegister I.SourceRegister I.SourceRegister
     | ADDI I.DestRegister I.SourceRegister I.SignedImmediate
     | NAND I.DestRegister I.SourceRegister I.SourceRegister
+    | MUL I.DestRegister I.SourceRegister I.SourceRegister
     | LUI I.DestRegister I.UnsignedImmediate
     | SW I.SourceRegister I.SourceRegister I.SignedImmediate
     | LW I.DestRegister I.SourceRegister I.SignedImmediate
@@ -76,6 +77,7 @@ uImmParser      = I.ImmU <$> unsignedInteger
 addParser   = ADD <$ rword "ADD" <*> destParser <*> sourceParser <*> sourceParser
 addiParser  = ADDI <$ rword "ADDI" <*> destParser <*> sourceParser <*> sImmParser
 nandParser  = NAND <$ rword "NAND" <*> destParser <*> sourceParser <*> sourceParser
+mulParser  = MUL <$ rword "MUL" <*> destParser <*> sourceParser <*> sourceParser
 luiParser   = LUI <$ rword "LUI" <*> destParser <*> uImmParser
 swParser    = SW <$ rword "SW" <*> sourceParser <*> sourceParser <*> sImmParser
 lwParser    = LW <$ rword "LW" <*> destParser <*> sourceParser <*> sImmParser
@@ -91,6 +93,7 @@ statementParser :: Parser Statement
 statementParser =     try addParser
                   <|> try addiParser
                   <|> try nandParser
+                  <|> try mulParser
                   <|> try luiParser
                   <|> try swParser
                   <|> try lwParser
