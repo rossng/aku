@@ -76,5 +76,8 @@
     <orderEntry type="library" name="aku" level="project" />
     <orderEntry type="library" name="aku-assembler" level="project" />
     <orderEntry type="library" name="aku-debugger" level="project" />
+    <orderEntry type="library" name="aku" level="project" />
+    <orderEntry type="library" name="aku-assembler" level="project" />
+    <orderEntry type="library" name="aku-debugger" level="project" />
   </component>
 </module>

@@ -3,6 +3,7 @@ module Utils where
 import CPU
 import qualified Memory as M
 import Stats
+import Function
 
 import Control.Lens
 import Control.Monad.Writer
@@ -22,7 +23,4 @@ executeProgramUntilHalt c p = executeUntilHalt (cpuWithProgram c p)
 
 executeUntilHalt :: CPU -> (CPU, Stats)
 executeUntilHalt c = runWriter $ iterateUntilM (^.halted) update c
-
-repeatFunction :: Monad m => Int -> (a -> m a) -> (a -> m a)
-repeatFunction n f = foldr (<=<) return (replicate n f)
 

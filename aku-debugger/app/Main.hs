@@ -15,6 +15,7 @@ import Command
 import qualified Memory as M
 import qualified Registers as R
 import Utils
+import Function
 
 main :: IO ()
 main = do

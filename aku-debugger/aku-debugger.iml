@@ -65,6 +65,7 @@
     <orderEntry type="library" name="megaparsec-6.2.0" level="project" />
     <orderEntry type="library" name="parser-combinators-0.2.0" level="project" />
     <orderEntry type="library" name="scientific-0.3.5.2" level="project" />
+    <orderEntry type="library" name="aku-assembler" level="project" />
     <orderEntry type="library" name="aku" level="project" />
     <orderEntry type="library" name="aku-assembler" level="project" />
     <orderEntry type="library" name="aku" level="project" />

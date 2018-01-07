@@ -24,6 +24,7 @@ library
                      , ReservationStation
                      , RegisterStatusTable
                      , ExecutionUnit
+                     , Function
   build-depends:       base >= 4.7 && < 5
                      , vector
                      , lens

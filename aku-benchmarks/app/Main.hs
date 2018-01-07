@@ -14,7 +14,7 @@ import Stats
 main :: IO ()
 main = do
     putStrLn "aku benchmarks"
-    maybeProg <- loadProgram "aku-benchmarks/programs/bubble_sort.asm"
+    maybeProg <- loadProgram "aku-benchmarks/programs/throughput.asm"
     case maybeProg of
         Just prog   -> do
             let (cpu, stats) = benchmarkWithMemory (reverse [1..100]) prog

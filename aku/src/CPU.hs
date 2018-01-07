@@ -19,6 +19,7 @@ import ReservationStation
 import RegisterStatusTable
 import Stats
 import ExecutionUnit
+import Function
 
 initialRST :: RST
 initialRST = Map.fromList [
@@ -55,6 +56,15 @@ initialEUs =    makeEUs QuickInt 10
 storeLatency :: Int
 storeLatency = 10
 
+numDispatch :: Int
+numDispatch = 4
+
+numIssuesPerGroup :: Int
+numIssuesPerGroup = 4
+
+numCommit :: Int
+numCommit = 4
+
 data CPU = CPU {
       _program :: M.Program
     , _memory :: M.Memory
@@ -87,8 +97,8 @@ initialCPU = CPU M.emptyProgram M.emptyMemory emptyRegisters False 0 initialRST 
 
 update :: CPU -> Writer Stats CPU
 update cpu = if cpu^.halted then writer (cpu, emptyStats) else do
-    cpu'        <- commit cpu
-    cpu''       <- dispatch cpu'
+    cpu'        <- repeatFunction numCommit commit cpu
+    cpu''       <- repeatFunction numDispatch dispatch cpu'
     let cpu'''  = execute cpu''
     let cpu'''' = issue cpu'''
     tell oneCycle
@@ -185,7 +195,12 @@ dispatchNormal rsvId robId insn cpu = do
           robEntry = makeROBEntry cpu insn
 
 issue :: CPU -> CPU
-issue = issueTo Branch . issueTo Load . issueTo Address . issueTo QuickInt
+issue = issueBranch . issueLoad . issueAddress . issueQuickInt . issueSlowInt
+  where issueQuickInt cpu = iterate (issueTo QuickInt) cpu !! numIssuesPerGroup
+        issueSlowInt cpu = iterate (issueTo SlowInt) cpu !! numIssuesPerGroup
+        issueBranch cpu = iterate (issueTo Branch) cpu !! numIssuesPerGroup
+        issueLoad cpu = iterate (issueTo Load) cpu !! numIssuesPerGroup
+        issueAddress cpu = iterate (issueTo Address) cpu !! numIssuesPerGroup
 
 issueTo :: RSVType -> CPU -> CPU
 issueTo t cpu = if hasFreeEU t (cpu^.executionUnits) then cpu' else cpu
