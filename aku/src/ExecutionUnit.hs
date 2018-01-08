@@ -60,15 +60,23 @@ hasFreeEU t eus = fst eusOfType > length (snd eusOfType)
 makeEU :: (EUInstruction, ROBId) -> EU
 makeEU (insn, robId) = EU latency insn robId
     where latency = case opToRSVType (insToOp insn) of
-                        Load      -> 10
+                        --Load      -> 10
                         Address   -> 1
                         QuickInt  -> 1
                         SlowInt   -> 4
                         Branch    -> 1
 
+loadLatency :: Int
+loadLatency = 3
+
 pushEU :: RSVType -> (EUInstruction, ROBId) -> EUs -> EUs
 pushEU t contents eus = if hasFreeEU t eus then
     Map.adjust (\(max, l) -> (max, l ++ [makeEU contents])) t eus
+    else eus
+
+pushLoadEU :: (EUInstruction, ROBId) -> EUs -> EUs
+pushLoadEU (insn, robId) eus = if hasFreeEU Load eus then
+    Map.adjust (\(max, l) -> (max, l ++ [EU loadLatency insn robId])) Load eus
     else eus
 
 stepEU :: EU -> EU
@@ -86,7 +94,7 @@ emptyEUs (max, eus) = (max, eus')
 dropUpTo :: Int -> (a -> Bool) -> [a] -> [a]
 dropUpTo n p [] = []
 dropUpTo 0 p xs = xs
-dropUpTo n p (x:xs) = if p x then xs else x:xs
+dropUpTo n p (x:xs) = if p x then dropUpTo (n-1) p xs else x: (dropUpTo n p xs)
 
 emptyAddressEUs :: Int -> (Int, [EU]) -> (Int, [EU])
 emptyAddressEUs n (max, eus) = (max, eus'')
@@ -101,4 +109,4 @@ emptyCompleteEUs eus = refilled
           addressEUs = eus Map.! Address
           completedAddressEUs = map (\eu -> (eu^.euInstruction, eu^.euROBId)) $ filter (\eu -> eu^.euStatus <= 0) (snd addressEUs)
           progressableAddressEUs = take freeBranchEUs (filter (\(ins, _) -> insToOp ins == OPLW) completedAddressEUs)
-          refilled = foldr (pushEU Load) emptied progressableAddressEUs
+          refilled = foldr pushLoadEU emptied progressableAddressEUs

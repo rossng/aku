@@ -267,7 +267,8 @@ completeEUs cpu = cpu   & rob .~ foldr (\(robId, robEntry, _) r -> updateROBEntr
           justEuResults = mapMaybe (\(robId, robEntry, result) -> do { result' <- result; return (robId, robEntry, result') }) euResults
 
 execute :: CPU -> CPU
-execute cpu = completeEUs $ cpu & executionUnits %~ stepEUs
+execute cpu = completeEUs steppedEUs
+  where steppedEUs = cpu & executionUnits %~ stepEUs
 
 -- todo: correct offset for branches, speculative execution
 commitROBEntry :: ROBEntry -> CPU -> Writer Stats CPU
