@@ -5,6 +5,7 @@ import Control.Lens
 import qualified Data.Map.Strict as Map
 import Data.Word
 import Control.Arrow
+import Debug.Trace
 
 import ReservationStation
 import Instruction as I
@@ -94,7 +95,7 @@ emptyEUs (max, eus) = (max, eus')
 dropUpTo :: Int -> (a -> Bool) -> [a] -> [a]
 dropUpTo n p [] = []
 dropUpTo 0 p xs = xs
-dropUpTo n p (x:xs) = if p x then dropUpTo (n-1) p xs else x: (dropUpTo n p xs)
+dropUpTo n p (x:xs) = if p x then dropUpTo (n-1) p xs else x : dropUpTo n p xs
 
 emptyAddressEUs :: Int -> (Int, [EU]) -> (Int, [EU])
 emptyAddressEUs n (max, eus) = (max, eus'')

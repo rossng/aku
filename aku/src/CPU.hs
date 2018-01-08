@@ -11,6 +11,7 @@ import Data.Bits
 import Data.Maybe
 import Control.Monad.Writer
 import qualified Data.Map.Strict as Map
+import Debug.Trace
 
 import Registers
 import Instruction
@@ -54,7 +55,7 @@ initialEUs =    makeEUs QuickInt 10
     `Map.union` makeEUs Load 10
 
 storeLatency :: Int
-storeLatency = 10
+storeLatency = 3
 
 numDispatch :: Int
 numDispatch = 4
@@ -246,6 +247,7 @@ getEUResult cpu (t, eu) = if eu^.euStatus > 0
         -> (ROBBranch pc' pred (Just (fromIntegral s)) r, Nothing)
     (Branch, HALT, ROBHalt _)
         -> (ROBHalt True, Nothing)
+    u -> trace ("!!!!! BUG " ++ show u) (ROBHalt True, Nothing)
     where robEntry = getROBEntry (cpu^.rob) (eu^.euROBId)
           mem = cpu^.memory
 
