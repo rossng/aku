@@ -9,6 +9,10 @@ stack build
 
 `stack test` will run the test suite. 
 
+# Presentation
+
+See `aku-presentation.pdf`.
+
 # aku-debugger
 
 Run `stack exec aku-debugger` to launch the debugger. Commands:
